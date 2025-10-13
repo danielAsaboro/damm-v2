@@ -242,7 +242,7 @@ pub struct ClaimPositionFeeAccounts<'info> {
     pub position: AccountInfo<'info>,
     /// CHECK: Token A account
     pub token_a_account: AccountInfo<'info>,
-    /// CHECK: Token B account  
+    /// CHECK: Token B account
     pub token_b_account: AccountInfo<'info>,
     /// CHECK: Token A vault
     pub token_a_vault: AccountInfo<'info>,
@@ -263,7 +263,9 @@ pub struct ClaimPositionFeeAccounts<'info> {
 }
 
 // CP-AMM Program ID (local test program)
-pub const CP_AMM_PROGRAM_ID: Pubkey = anchor_lang::solana_program::pubkey!("ASmKWt93JEMHxbdE6j7znD9y2FcdPboCzC3xtSTJvN7S");
+pub const CP_AMM_PROGRAM_ID: Pubkey = anchor_lang::solana_program::pubkey!(
+    "ASmKWt93JEMHxbdE6j7znD9y2FcdPboCzC3xtSTJvN7S"
+);
 
 /// Program struct for CPI
 pub struct CpAmm;

@@ -31,9 +31,10 @@ export async function getOrCreateAssociatedTokenAccount(
   payer: Keypair,
   mint: PublicKey,
   owner: PublicKey,
-  tokenProgram = TOKEN_PROGRAM_ID
+  tokenProgram = TOKEN_PROGRAM_ID,
+  allowOwnerOffCurve = false // Set to true only for PDA owners
 ) {
-  const ataKey = getAssociatedTokenAddressSync(mint, owner, true, tokenProgram);
+  const ataKey = getAssociatedTokenAddressSync(mint, owner, allowOwnerOffCurve, tokenProgram);
 
   const account = await banksClient.getAccount(ataKey);
   if (account === null) {

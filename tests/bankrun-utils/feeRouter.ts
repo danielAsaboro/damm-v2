@@ -22,7 +22,7 @@ import { BanksClient } from "solana-bankrun";
 import FeeRouterIDL from "../../target/idl/fee_router.json";
 import { FeeRouter } from "../../target/types/fee_router";
 import { processTransactionMaybeThrow } from "./common";
-import { Pool } from "./cpAmm";
+import { Pool, getPool } from "./cpAmm";
 import { STREAMFLOW_PROGRAM_ID } from "./streamflow";
 import { derivePoolAuthority } from "./accounts";
 
@@ -331,10 +331,6 @@ export async function addHonoraryLiquidity(
   } = params;
   const program = createFeeRouterProgram();
 
-  // Get pool data to determine token order
-  const poolAccount = await banksClient.getAccount(pool);
-  if (!poolAccount) throw new Error("Pool not found");
-
   // Derive PDAs
   const [positionOwner] = derivePositionOwnerPDA(vault);
   const positionOwnerAccount = await getInvestorFeePositionOwner(
@@ -346,47 +342,49 @@ export async function addHonoraryLiquidity(
 
   // Derive position NFT account
   const [positionNftAccount] = PublicKey.findProgramAddressSync(
-    [
-      Buffer.from("position_nft_account", "utf8"),
-      positionNftMint.toBuffer(),
-    ],
+    [Buffer.from("position_nft_account", "utf8"), positionNftMint.toBuffer()],
     CP_AMM_PROGRAM_ID
   );
 
   // Get pool info to determine vault order
-  const poolData = await Pool.fetch(banksClient, pool);
-  if (!poolData) throw new Error("Failed to fetch pool data");
+  const poolData = await getPool(banksClient, pool);
 
-  const quoteVault = poolData.tokenBVault; // assumingcollectFeeMode = 1
-  const baseVault = poolData.tokenAVault;
+  // Dynamically determine which vault is quote and which is base
+  // by comparing the pool's token mints with our quote/base mints
+  const quoteVault = poolData.tokenBMint.equals(quoteMint)
+    ? poolData.tokenBVault
+    : poolData.tokenAVault;
+  const baseVault = poolData.tokenAMint.equals(baseMint)
+    ? poolData.tokenAVault
+    : poolData.tokenBVault;
 
   // Get funder token accounts
-  const funderTokenA = getAssociatedTokenAddressSync(
-    baseMint,
-    funder.publicKey,
-    false,
-    TOKEN_PROGRAM_ID
-  );
-  const funderTokenB = getAssociatedTokenAddressSync(
+  const funderQuoteAccount = getAssociatedTokenAddressSync(
     quoteMint,
     funder.publicKey,
     false,
     TOKEN_PROGRAM_ID
   );
+  const funderBaseAccount = getAssociatedTokenAddressSync(
+    baseMint,
+    funder.publicKey,
+    false,
+    TOKEN_PROGRAM_ID
+  );
+
+  // Derive treasury ATAs (PDA-owned intermediate accounts)
+  const [quoteTreasury] = deriveTreasuryPDA(vault, quoteMint);
+  const [baseTreasury] = deriveTreasuryPDA(vault, baseMint);
 
   // Determine token programs
   const baseMintAccount = await banksClient.getAccount(baseMint);
   const quoteMintAccount = await banksClient.getAccount(quoteMint);
 
-  const tokenAProgram = baseMintAccount?.owner || TOKEN_PROGRAM_ID;
-  const tokenBProgram = quoteMintAccount?.owner || TOKEN_PROGRAM_ID;
+  const quoteTokenProgram = quoteMintAccount?.owner || TOKEN_PROGRAM_ID;
+  const baseTokenProgram = baseMintAccount?.owner || TOKEN_PROGRAM_ID;
 
   const transaction = await program.methods
-    .addHonoraryLiquidity(
-      liquidityDelta,
-      tokenAMaxAmount,
-      tokenBMaxAmount
-    )
+    .addHonoraryLiquidity(liquidityDelta, tokenAMaxAmount, tokenBMaxAmount)
     .accountsPartial({
       funder: funder.publicKey,
       vault,
@@ -398,11 +396,13 @@ export async function addHonoraryLiquidity(
       baseMint,
       quoteVault,
       baseVault,
-      funderTokenA,
-      funderTokenB,
+      funderQuoteAccount,
+      funderBaseAccount,
+      quoteTreasury,
+      baseTreasury,
       cpAmmProgram: CP_AMM_PROGRAM_ID,
-      tokenAProgram,
-      tokenBProgram,
+      quoteTokenProgram,
+      baseTokenProgram,
     })
     .transaction();
 
@@ -502,7 +502,9 @@ export async function crankDistribution(
   // Determine which vault is quote and which is base
   // by comparing the pool's token mints with our quote/base mints
 
-  const quoteVault = poolTokenBMint.equals(quoteMint) ? tokenBVault : tokenAVault;
+  const quoteVault = poolTokenBMint.equals(quoteMint)
+    ? tokenBVault
+    : tokenAVault;
   const baseVault = poolTokenAMint.equals(baseMint) ? tokenAVault : tokenBVault;
 
   // Determine token program by checking the vault owner

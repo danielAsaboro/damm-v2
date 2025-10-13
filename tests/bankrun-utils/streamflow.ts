@@ -2,6 +2,7 @@ import { PublicKey, SystemProgram, Keypair, LAMPORTS_PER_SOL } from "@solana/web
 import { BanksClient } from "solana-bankrun";
 import BN from "bn.js";
 import { processTransactionMaybeThrow } from "./common";
+import { getOrCreateAssociatedTokenAccount } from "./token";
 
 /**
  * Mock Streamflow stream structure for testing
@@ -448,8 +449,14 @@ export async function createMockInvestorStreams(
     const locked = depositedAmount.toNumber() - availableToWithdraw;
     lockedAmounts.push(new BN(locked));
 
-    // Mock investor ATA (in real scenario, this would be a real ATA)
-    const investorATA = Keypair.generate().publicKey;
+    // Create actual investor ATA for receiving fee distributions
+    const investorWallet = recipient; // Use the recipient as the ATA owner
+    const investorATA = await getOrCreateAssociatedTokenAccount(
+      banksClient,
+      payer,
+      mint,
+      investorWallet
+    );
     investorATAs.push(investorATA);
   }
 

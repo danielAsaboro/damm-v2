@@ -425,7 +425,8 @@ export async function claimProtocolFee(
     operator,
     poolState.tokenAMint,
     treasury,
-    tokenAProgram
+    tokenAProgram,
+    true // treasury is a PDA (poolAuthority)
   );
 
   const tokenBAccount = await getOrCreateAssociatedTokenAccount(
@@ -433,7 +434,8 @@ export async function claimProtocolFee(
     operator,
     poolState.tokenBMint,
     treasury,
-    tokenBProgram
+    tokenBProgram,
+    true // treasury is a PDA (poolAuthority)
   );
 
   const transaction = await program.methods
