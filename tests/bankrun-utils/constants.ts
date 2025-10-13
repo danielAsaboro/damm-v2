@@ -2,7 +2,7 @@ import { BN } from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
 
 export const CP_AMM_PROGRAM_ID = new PublicKey(
-  "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG"
+  "ASmKWt93JEMHxbdE6j7znD9y2FcdPboCzC3xtSTJvN7S"
 );
 
 export const ALPHA_VAULT_PROGRAM_ID = new PublicKey(
@@ -24,10 +24,10 @@ export const OFFSET = 64;
 export const U64_MAX = new BN("18446744073709551615");
 export const MAX_FEE_BPS = 9900;
 export const MAX_FEE_NUMERATOR = 990_000_000;
-export const MIN_FEE_NUMERATOR = 100_000
+export const MIN_FEE_NUMERATOR = 100_000;
 export const FEE_DENOMINATOR = 1_000_000_000;
 
-export const  MAX_RATE_LIMITER_DURATION_IN_SECONDS = 60 * 60 * 12; // 12 hours
+export const MAX_RATE_LIMITER_DURATION_IN_SECONDS = 60 * 60 * 12; // 12 hours
 export const MAX_RATE_LIMITER_DURATION_IN_SLOTS = 108000; // 12 hours
 
 // Set the decimals, fee basis points, and maximum fee

@@ -1,0 +1,45 @@
+
+action "fee_router_creator_payout_day_closed" "svm::deploy_subgraph" {
+    program_id = action.deploy_fee_router.program_id
+    program_idl = action.deploy_fee_router.program_idl
+    block_height = 0 // action.deploy_fee_router.block_height
+    event {
+        name = "CreatorPayoutDayClosed"
+    }
+}
+
+action "fee_router_honorary_position_initialized" "svm::deploy_subgraph" {
+    program_id = action.deploy_fee_router.program_id
+    program_idl = action.deploy_fee_router.program_idl
+    block_height = 0 // action.deploy_fee_router.block_height
+    event {
+        name = "HonoraryPositionInitialized"
+    }
+}
+
+action "fee_router_investor_payout_page" "svm::deploy_subgraph" {
+    program_id = action.deploy_fee_router.program_id
+    program_idl = action.deploy_fee_router.program_idl
+    block_height = 0 // action.deploy_fee_router.block_height
+    event {
+        name = "InvestorPayoutPage"
+    }
+}
+
+action "fee_router_policy_setup" "svm::deploy_subgraph" {
+    program_id = action.deploy_fee_router.program_id
+    program_idl = action.deploy_fee_router.program_idl
+    block_height = 0 // action.deploy_fee_router.block_height
+    event {
+        name = "PolicySetup"
+    }
+}
+
+action "fee_router_quote_fees_claimed" "svm::deploy_subgraph" {
+    program_id = action.deploy_fee_router.program_id
+    program_idl = action.deploy_fee_router.program_idl
+    block_height = 0 // action.deploy_fee_router.block_height
+    event {
+        name = "QuoteFeesClaimed"
+    }
+}

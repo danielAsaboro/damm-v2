@@ -8,3 +8,5 @@ test-ledger
 .yarn
 proptest-regressions
 commands
+resources/
+current_progress/
