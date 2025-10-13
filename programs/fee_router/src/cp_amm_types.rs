@@ -47,12 +47,27 @@ pub struct Pool {
     pub token_a_flag: u8,
     /// token b flag
     pub token_b_flag: u8,
-    /// 0 is collect fee in both token, 1 only collect fee in token a, 2 only collect fee in token b
+    /// CollectFeeMode: 0 = BothToken (collects in both), 1 = OnlyB (collects only in token_b)
+    /// Note: There is no mode 2. To collect in token_a, flip the token order when creating the pool
     pub collect_fee_mode: u8,
     /// pool type
     pub pool_type: u8,
-    /// Additional padding to match exact struct size
-    pub additional_padding: [u8; 26],
+    /// padding
+    pub _padding_0: [u8; 2],
+    /// cumulative fee a per liquidity
+    pub fee_a_per_liquidity: [u8; 32], // U256
+    /// cumulative fee b per liquidity
+    pub fee_b_per_liquidity: [u8; 32], // U256
+    /// permanent locked liquidity
+    pub permanent_lock_liquidity: u128,
+    /// metrics
+    pub metrics: PoolMetrics,
+    /// pool creator
+    pub creator: Pubkey,
+    /// Padding for further use
+    pub _padding_1: [u64; 6],
+    /// Farming reward information (NUM_REWARDS = 2)
+    pub reward_infos: [RewardInfo; 2],
 }
 
 impl Default for Pool {
@@ -81,25 +96,53 @@ impl Default for Pool {
             token_b_flag: 0,
             collect_fee_mode: 0,
             pool_type: 0,
-            additional_padding: [0; 26],
+            _padding_0: [0; 2],
+            fee_a_per_liquidity: [0; 32],
+            fee_b_per_liquidity: [0; 32],
+            permanent_lock_liquidity: 0,
+            metrics: PoolMetrics::default(),
+            creator: Pubkey::default(),
+            _padding_1: [0; 6],
+            reward_infos: [RewardInfo::default(); 2],
         }
     }
 }
 
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default)]
+pub struct PoolMetrics {
+    pub total_lp_a_fee: u128,
+    pub total_lp_b_fee: u128,
+    pub total_protocol_a_fee: u64,
+    pub total_protocol_b_fee: u64,
+    pub total_partner_a_fee: u64,
+    pub total_partner_b_fee: u64,
+    pub total_position: u64,
+    pub padding: u64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default)]
+pub struct RewardInfo {
+    pub initialized: u8,
+    pub reward_token_flag: u8,
+    pub _padding_0: [u8; 6],
+    pub _padding_1: [u8; 8],
+    pub mint: Pubkey,
+    pub vault: Pubkey,
+    pub funder: Pubkey,
+    pub reward_duration: u64,
+    pub reward_duration_end: u64,
+    pub reward_rate: u128,
+    pub reward_per_token_stored: [u8; 32], // U256
+    pub last_update_time: u64,
+    pub cumulative_seconds_with_empty_liquidity_reward: u64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Default)]
 #[repr(C)]
 pub struct PoolFeesStruct {
     // We don't actually use the pool fees struct details in our validation
-    // Just need it to exist for the account deserialization
-    pub _padding: [u8; 32],
-}
-
-impl Default for PoolFeesStruct {
-    fn default() -> Self {
-        Self {
-            _padding: [0; 32],
-        }
-    }
+    // Just need it to match the exact size: 160 bytes
+    pub data: [u64; 20], // 20 * 8 = 160 bytes
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone)]
@@ -219,28 +262,28 @@ pub struct ClaimPositionFeeAccounts<'info> {
     pub token_b_program: AccountInfo<'info>,
 }
 
-// CP-AMM Program ID
-declare_id!("cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG");
+// CP-AMM Program ID (local test program)
+pub const CP_AMM_PROGRAM_ID: Pubkey = anchor_lang::solana_program::pubkey!("ASmKWt93JEMHxbdE6j7znD9y2FcdPboCzC3xtSTJvN7S");
 
 /// Program struct for CPI
 pub struct CpAmm;
 
 impl anchor_lang::Id for CpAmm {
     fn id() -> Pubkey {
-        ID
+        CP_AMM_PROGRAM_ID
     }
 }
 
 // Manual Owner implementations for custom program ID
 impl anchor_lang::Owner for Pool {
     fn owner() -> Pubkey {
-        ID
+        CP_AMM_PROGRAM_ID
     }
 }
 
 impl anchor_lang::Owner for Position {
     fn owner() -> Pubkey {
-        ID
+        CP_AMM_PROGRAM_ID
     }
 }
 

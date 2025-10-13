@@ -12,6 +12,9 @@ import { TRANSFER_HOOK_COUNTER_PROGRAM_ID } from "./transferHook";
 
 import CpAmmIdl from "../../target/idl/cp_amm.json";
 
+const FEE_ROUTER_PROGRAM_ID = new PublicKey("5B57SJ3g2YoNXUpsZqqjEQkRSxyKtVTQRXdgAirz6bio");
+const STREAMFLOW_PROGRAM_ID = new PublicKey("strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m");
+
 export async function startTest(root: Keypair) {
   // Program name need to match fixtures program name
   return startAnchor(
@@ -20,6 +23,10 @@ export async function startTest(root: Keypair) {
       {
         name: "cp_amm",
         programId: new PublicKey(CP_AMM_PROGRAM_ID),
+      },
+      {
+        name: "fee_router",
+        programId: FEE_ROUTER_PROGRAM_ID,
       },
       {
         name: "transfer_hook_counter",
@@ -71,7 +78,37 @@ export async function processTransactionMaybeThrow(
 ) {
   const transactionMeta = await banksClient.tryProcessTransaction(transaction);
   if (transactionMeta.result && transactionMeta.result.length > 0) {
-    throw Error(transactionMeta.result);
+    // Parse error code if present
+    let errorMessage = transactionMeta.result;
+
+    // Check for custom program error codes (e.g., "custom program error: 0x2ee0")
+    const match = errorMessage.match(/custom program error: (0x[0-9a-fA-F]+)/);
+    if (match) {
+      const errorCode = parseInt(match[1], 16);
+      // Fee router errors: Anchor adds 6000 offset, so error codes become:
+      // QuoteOnlyValidationFailed = 6000 → 0x2ee0 = 12000
+      // InvalidPoolConfiguration = 6006 → 0x2ee6 = 12006
+      // To get the error name, we map errorCode directly to the enum value
+      const errorCodeToName: Record<number, string> = {
+        12000: "QuoteOnlyValidationFailed",
+        12001: "BaseFeesDetected",
+        12002: "CrankWindowNotReached",
+        12003: "InvalidPagination",
+        12004: "InsufficientStreamflowData",
+        12005: "DistributionAlreadyComplete",
+        12006: "InvalidPoolConfiguration",
+        12007: "MathOverflow",
+        12008: "AccountCountMismatch",
+        12009: "DailyCapExceeded",
+        12010: "InvalidPositionOwnership",
+      };
+
+      if (errorCode in errorCodeToName) {
+        errorMessage += ` (${errorCodeToName[errorCode]})`;
+      }
+    }
+
+    throw Error(errorMessage);
   }
 }
 

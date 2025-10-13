@@ -49,4 +49,19 @@ pub mod fee_router {
             total_locked_all_investors
         )
     }
+
+    /// Add liquidity to the honorary position
+    pub fn add_honorary_liquidity(
+        ctx: Context<AddHonoraryLiquidity>,
+        liquidity_delta: u128,
+        token_a_amount_threshold: u64,
+        token_b_amount_threshold: u64
+    ) -> Result<()> {
+        instructions::handle_add_honorary_liquidity(
+            ctx,
+            liquidity_delta,
+            token_a_amount_threshold,
+            token_b_amount_threshold
+        )
+    }
 }

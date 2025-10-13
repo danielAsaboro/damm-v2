@@ -7,31 +7,28 @@ pub fn validate_quote_only_pool(
     pool: &Pool,
     expected_quote_mint: &Pubkey,
 ) -> Result<()> {
-    // Check if pool is configured to collect fees only in token B
-    // Based on the pool.rs code: 0 = both tokens, 1 = only token A, 2 = only token B
+    // Check if pool is configured to collect fees only in one token
+    // Based on CP-AMM's CollectFeeMode enum and FeeMode logic:
+    // - 0 = BothToken: collects fees in both tokens (REJECT)
+    // - 1 = OnlyB: collects fees only in tokenB (ACCEPT if quote_mint == tokenB)
+    // The FeeMode logic shows that OnlyB mode collects fees on the OUTPUT token (tokenB)
+    // Note: There is no mode 2, only 0 and 1 exist in the actual CP-AMM code
     match pool.collect_fee_mode {
-        2 => {
-            // Only token B mode - Token B should be our quote mint
+        1 => {
+            // OnlyB mode - collects fees only in tokenB (the output token)
+            // Token B should be our quote mint
             require_keys_eq!(
                 pool.token_b_mint,
                 *expected_quote_mint,
                 HonouraryError::QuoteOnlyValidationFailed
             );
         }
-        1 => {
-            // Only token A mode - Token A should be our quote mint
-            require_keys_eq!(
-                pool.token_a_mint,
-                *expected_quote_mint,
-                HonouraryError::QuoteOnlyValidationFailed
-            );
-        }
         0 => {
-            // Both token mode - we don't want this
+            // BothToken mode - we don't want this (not quote-only)
             return Err(HonouraryError::QuoteOnlyValidationFailed.into());
         }
         _ => {
-            // Invalid mode
+            // Invalid mode (mode 2+ doesn't exist in CP-AMM)
             return Err(HonouraryError::InvalidPoolConfiguration.into());
         }
     }
@@ -48,15 +45,15 @@ pub fn validate_quote_only_pool(
 /// Determine which token is the quote token based on pool configuration
 pub fn determine_quote_mint(pool: &Pool) -> Result<Pubkey> {
     match pool.collect_fee_mode {
-        2 => Ok(pool.token_b_mint),  // Only token B
-        1 => Ok(pool.token_a_mint),  // Only token A
+        1 => Ok(pool.token_b_mint),  // OnlyB mode - collects in tokenB
         0 => {
-            // Both token mode - we need additional logic to determine
-            // which token should be treated as quote. This might depend
-            // on the specific pool configuration or external parameters.
+            // BothToken mode - not supported for quote-only pools
             Err(HonouraryError::InvalidPoolConfiguration.into())
         }
-        _ => Err(HonouraryError::InvalidPoolConfiguration.into())
+        _ => {
+            // Invalid mode (mode 2+ doesn't exist)
+            Err(HonouraryError::InvalidPoolConfiguration.into())
+        }
     }
 }
 
