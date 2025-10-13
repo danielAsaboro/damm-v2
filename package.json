@@ -2,7 +2,7 @@
   "scripts": {
     "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
     "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
-    "test": "anchor build -- --features local && yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/*.test.ts"
+    "test": "anchor build -- --features local && pnpm exec ts-mocha -p ./tsconfig.json -t 1000000 tests/*.test.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.31.0"
@@ -21,5 +21,6 @@
     "@solana/web3.js": "^1.95.3",
     "solana-bankrun": "^0.3.1",
     "@solana/spl-token-metadata": "^0.1.6"
-  }
+  },
+  "packageManager": "pnpm@10.18.2"
 }
