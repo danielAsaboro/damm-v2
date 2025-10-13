@@ -89,3 +89,25 @@
 [2025-10-14--12-22-41 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
 [2025-10-14--12-22-46 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
 [2025-10-14--12-22-46 INFO parity_ws::io] Accepted a new tcp connection from 127.0.0.1:53098.
+[2025-10-14--12-40-18 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-40-18 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-40-18 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-40-26 INFO parity_ws::io] Accepted a new tcp connection from 127.0.0.1:54920.
+[2025-10-14--12-40-26 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-40-26 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-40-26 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-40-27 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-40-27 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-40-27 INFO parity_ws::io] Accepted a new tcp connection from 127.0.0.1:54926.
+[2025-10-14--12-50-43 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-50-43 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-50-43 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-55-23 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-55-23 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-55-23 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-57-21 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-57-21 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-57-21 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-57-43 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-57-43 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000
+[2025-10-14--12-57-43 ERROR litesvm] Payer account bossj3JvwiNK7pvjr149DqdtJxf2gdygbcmEPTkb2F1 has insufficient lamports for fee. Payer lamports: 1447680 min_balance: 1447680 fee: 10000

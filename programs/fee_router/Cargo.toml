@@ -23,12 +23,3 @@ anchor-spl = { workspace = true, features = [] }
 bytemuck = { version = "1.20.0", features = ["derive"] }
 borsh = "1.5.1"
 streamflow-sdk = { version = "0.10", features = ["cpi"] }
-
-# CP-AMM dependency removed - using local types to avoid compilation issues
-
-[dev-dependencies]
-# Note: These are only used for integration tests, not in the actual program
-# CP-AMM program for testing CPI calls
-# cp-amm = { path = "../../resources/damm-v2/programs/cp-amm", features = ["no-entrypoint"] }
-# Streamflow SDK for testing vesting contract integration
-# streamflow-sdk = { path = "../../resources/rust-sdk/programs/streamflow-sdk", features = ["no-entrypoint"] }
