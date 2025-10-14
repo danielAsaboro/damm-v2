@@ -5,9 +5,14 @@ A Solana program that creates and manages an honorary LP position in DAMM v2 (CP
 **Bounty Submission** | [Star Platform](https://star.new)
 
 📦 **Public Repository**: https://github.com/danielAsaboro/damm-v2.git
-🎯 **All Deliverables Complete**: Module ✅ | Tests ✅ | Documentation ✅
-🚫 **No Mocks**: Real Streamflow mainnet program binary
-✅ **89 Passing, 2 Pending** (2 alpha vault tests skipped)
+
+🎯 **All Deliverables Complete**:
+
+- Module ✅
+- Tests ✅
+- Documentation ✅
+- 🚫 **No Mocks**: Pulled real Streamflow mainnet program binary
+- ✅ **89 Passing, 2 Pending** (2 alpha vault tests skipped)
 
 - **Program ID**: `5B57SJ3g2YoNXUpsZqqjEQkRSxyKtVTQRXdgAirz6bio`
 - **CP-AMM Program**: `ASmKWt93JEMHxbdE6j7znD9y2FcdPboCzC3xtSTJvN7S` (localnet)
@@ -16,12 +21,14 @@ A Solana program that creates and manages an honorary LP position in DAMM v2 (CP
 ## 🏆 Bounty Deliverables Checklist
 
 ### ✅ 1. Public Git Repository
+
 - **URL**: https://github.com/danielAsaboro/damm-v2.git
 - **License**: MIT
 - **Full source code**: All programs, tests, and documentation included
 - **Visibility**: Public
 
 ### ✅ 2. Anchor-Compatible Module
+
 - **Location**: `programs/fee_router/`
 - **Instruction Interfaces**:
   - `initialize_honorary_position` - Creates quote-only fee position
@@ -35,6 +42,7 @@ A Solana program that creates and manages an honorary LP position in DAMM v2 (CP
 - **Deterministic seeds**: All PDAs use predictable derivation
 
 ### ✅ 3. End-to-End Tests
+
 - **Total Tests**: 89 passing, 2 pending (2 alpha vault tests intentionally skipped)
 - **Test Files**:
   - `tests/feeRouter.test.ts` - 29 fee router integration tests (including 2 ALT scalability tests)
@@ -46,7 +54,9 @@ A Solana program that creates and manages an honorary LP position in DAMM v2 (CP
 - **Scalability Tests**: Address Lookup Table integration tested with 25+ investors per transaction
 
 ### ✅ 4. Comprehensive README.md
+
 This document provides:
+
 - ✅ **Setup instructions** - See [Installation & Setup](#installation--setup)
 - ✅ **Integration wiring guide** - See [Integration Wiring](#integration-wiring-guide)
 - ✅ **PDA documentation** - See [Account Structure](#account-structure)
@@ -73,21 +83,134 @@ _Figure 1: Complete system architecture showing the flow from CP-AMM pool fee ac
 
 ## 📋 Table of Contents
 
-- [Bounty Deliverables Checklist](#bounty-deliverables-checklist)
-- [The Journey: No Mocks, Real Programs](#the-journey-no-mocks-real-programs)
-- [Overview](#overview)
-- [Architecture & Approach](#architecture--approach)
-- [Hard Requirements Met](#hard-requirements-met)
-- [Technical Implementation](#technical-implementation)
-- [Major Challenges Solved](#major-challenges-solved)
-- [Testing (86 Passing, 2 Pending)](#testing)
-- [Installation & Setup](#installation--setup)
-- [Integration Wiring Guide](#integration-wiring-guide)
-- [Usage Guide](#usage-guide)
-- [Account Structure](#account-structure)
-- [Events](#events)
-- [Error Codes](#error-codes)
-- [Failure Modes & Recovery](#failure-modes--recovery)
+- [⚡ Quick Start (5 Minutes)](#-quick-start-5-minutes)
+- [🏆 Bounty Deliverables Checklist](#-bounty-deliverables-checklist)
+- [🚀 The Journey: No Mocks, Real Programs](#-the-journey-no-mocks-real-programs)
+- [🎯 Overview](#-overview)
+- [🏗 Architecture & Approach](#-architecture--approach)
+- [✅ Hard Requirements Met](#-hard-requirements-met)
+- [🔧 Technical Implementation](#-technical-implementation)
+- [🧪 Testing](#-testing)
+- [📦 Installation & Setup](#-installation--setup)
+- [🔌 Integration Wiring Guide](#-integration-wiring-guide)
+- [📖 Usage Guide](#-usage-guide)
+- [🗂 Address Lookup Table Integration](#-address-lookup-table-integration-for-scalability)
+- [🗄 Account Structure](#-account-structure)
+- [📡 Events](#-events)
+- [⚠️ Error Codes](#️-error-codes)
+- [🔢 Constants](#-constants)
+- [⚠️ Failure Modes & Recovery](#️-failure-modes--recovery)
+- [🔧 Troubleshooting FAQ](#-troubleshooting-faq)
+- [🚀 Production Considerations](#-production-considerations)
+- [📚 Additional Resources](#-additional-resources)
+
+---
+
+## ⚡ Quick Start (5 Minutes)
+
+Get the fee router running in 5 minutes with this complete example.
+
+### Prerequisites Checklist
+
+- ✅ Solana CLI 1.18.0+ installed
+- ✅ Anchor CLI 0.31.0 installed
+- ✅ Node.js 18+ and pnpm installed
+- ✅ Rust toolchain installed
+
+### End-to-End Example
+
+```typescript
+import { Program, AnchorProvider, BN } from "@coral-xyz/anchor";
+import { Keypair, PublicKey, ComputeBudgetProgram } from "@solana/web3.js";
+
+// 1. Setup (assumes you have a CP-AMM pool already created)
+const vault = Keypair.generate().publicKey;
+const quoteMint = new PublicKey("YOUR_QUOTE_MINT");  // e.g., USDC
+const baseMint = new PublicKey("YOUR_BASE_MINT");    // e.g., your token
+const pool = new PublicKey("YOUR_CPAMM_POOL");
+
+// 2. Initialize Honorary Position (quote-only fee collection)
+const [positionOwnerPDA] = PublicKey.findProgramAddressSync(
+  [Buffer.from("vault"), vault.toBuffer(), Buffer.from("investor_fee_pos_owner")],
+  program.programId
+);
+
+await program.methods
+  .initializeHonoraryPosition()
+  .accounts({
+    vault,
+    positionOwnerPda: positionOwnerPDA,
+    pool,
+    quoteMint,
+    baseMint,
+    // ... other accounts (see Integration Guide for full list)
+  })
+  .rpc();
+
+// 3. Setup Distribution Policy
+await program.methods
+  .setupPolicy({
+    creatorWallet: creatorKeypair.publicKey,
+    investorFeeShareBps: 5000,              // 50% to investors (max)
+    dailyCapLamports: new BN(1_000_000_000), // 1 token daily cap (optional)
+    minPayoutLamports: new BN(10000),        // Min 0.00001 tokens per payout
+    y0TotalAllocation: new BN(10_000_000),   // Total TGE allocation
+    totalInvestors: 100,                     // Total number of investors
+  })
+  .accounts({
+    authority: authority.publicKey,
+    vault,
+    // ... other accounts
+  })
+  .rpc();
+
+// 4. Add Liquidity to Honorary Position (to start accruing fees)
+await program.methods
+  .addHonoraryLiquidity(
+    new BN(1_000_000), // Amount in quote token
+    new BN(0),         // Base amount (0 for quote-only)
+    new BN(1),         // Active bin ID
+  )
+  .accounts({
+    vault,
+    // ... other accounts
+  })
+  .rpc();
+
+// 5. Run Distribution Crank (after 24h and fees have accrued)
+// IMPORTANT: Requires compute budget increase
+const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+  units: 400_000  // Required for Streamflow calculations
+});
+
+// Prepare investor accounts (Streamflow stream + ATA per investor)
+const investorAccounts = investors.flatMap(inv => [
+  { pubkey: inv.streamflowStream, isSigner: false, isWritable: false },
+  { pubkey: inv.quoteMintATA, isSigner: false, isWritable: true }
+]);
+
+await program.methods
+  .crankDistribution(
+    0,  // page_start (first page)
+    10  // page_size (process 10 investors)
+  )
+  .accounts({
+    vault,
+    // ... other accounts
+  })
+  .remainingAccounts(investorAccounts)
+  .preInstructions([computeBudgetIx])
+  .rpc();
+
+console.log("✅ Fee distribution complete!");
+```
+
+### Next Steps
+
+- 📖 Read [Technical Implementation](#technical-implementation) for detailed mechanics
+- 🔌 See [Integration Wiring Guide](#integration-wiring-guide) for CPI examples
+- 🧪 Check [Testing](#testing) to run the test suite
+- ⚠️ Review [Troubleshooting FAQ](#troubleshooting-faq) for common issues
 
 ---
 
@@ -113,19 +236,23 @@ While it would have been easier to create mock Streamflow accounts or stub out i
 ### The Reverse Engineering Process
 
 **Step 1: Gather Intelligence**
+
 - Found [Streamflow Rust SDK](https://github.com/streamflow-finance/rust-sdk) with struct definitions (no implementation)
 - Found [Streamflow JS SDK](https://github.com/streamflow-finance/js-sdk) with complete binary layout
 - Located mainnet program: `strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m`
 
 **Step 2: Download Mainnet Binary**
+
 ```bash
 solana program dump strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m \
   tests/fixtures/streamflow.so \
   --url mainnet-beta
 ```
+
 Result: 1.0 MB binary with ALL authentic Streamflow logic
 
 **Step 3: Decode the Binary Layout**
+
 - Analyzed JS SDK `layout.ts` - found 68+ field structure
 - Discovered official discriminator: `[172, 138, 115, 242, 121, 67, 183, 26]`
 - Mapped `Contract` structure (1104 bytes total)
@@ -133,6 +260,7 @@ Result: 1.0 MB binary with ALL authentic Streamflow logic
 
 **Step 4: Create Byte-Perfect Serialization**
 Implementation in `tests/bankrun-utils/streamflow.ts`:
+
 ```typescript
 // Match exact mainnet binary layout
 [0-7]     Discriminator: [172, 138, 115, 242, 121, 67, 183, 26]
@@ -147,12 +275,13 @@ Total: 1104 bytes
 ```
 
 **Step 5: Load Real Binary into Bankrun**
+
 ```typescript
 // tests/bankrun-utils/common.ts
 context.programs.push({
-  name: 'streamflow',
+  name: "streamflow",
   programId: STREAMFLOW_PROGRAM_ID,
-  programBytes: fs.readFileSync('tests/fixtures/streamflow.so'),
+  programBytes: fs.readFileSync("tests/fixtures/streamflow.so"),
 });
 ```
 
@@ -163,6 +292,7 @@ context.programs.push({
 **After**: Fixed discriminator to official value + matched exact binary layout = **87 tests passing, 2 pending**
 
 The Rust `streamflow_sdk` could finally deserialize our test accounts correctly:
+
 ```rust
 // programs/fee_router/src/integrations/streamflow.rs
 let stream_contract = StreamflowContract::deserialize(&mut stream_data)?;
@@ -173,6 +303,7 @@ let locked_amount = total_deposited.saturating_sub(available);
 ### Why This Approach Helped
 
 **What this gives me**:
+
 - ✅ Actual `available_to_claim()` calculations (not approximations)
 - ✅ Real `Contract` deserialization behavior
 - ✅ Works with mainnet from day one
@@ -181,6 +312,7 @@ let locked_amount = total_deposited.saturating_sub(available);
 ### The Result: 89 Passing Tests, 0 Mocks
 
 Every test in this repository uses:
+
 - Real Streamflow mainnet program binary
 - Real CP-AMM (Meteora DLMM v2 fork)
 - Actual vesting calculations from the SDK
@@ -587,10 +719,12 @@ Page N: crank_distribution(N*page_size, remaining, PAGE_N)  → Processes final 
 ```
 
 **Important**: `remaining_accounts` must contain:
+
 - **First page (page_start=0)**: ALL investor stream+ATA pairs for on-chain total calculation
 - **Subsequent pages**: Only current page's investor stream+ATA pairs
 
 **Transaction Size Management**:
+
 - **Without Address Lookup Tables (ALTs)**: Limited to ~5 investors per transaction due to Solana's 1232 byte limit
 - **With Address Lookup Tables (ALTs)**: Supports 25+ investors per transaction via address compression (tested with 25 investors)
 - **Recommendation**: Use ALTs for any deployment with >5 investors (see [Address Lookup Table Integration](#-address-lookup-table-integration-for-scalability) below)
@@ -830,6 +964,7 @@ This creates accounts that:
 #### All Tests Fail with Error `0x1775` (InvalidAdmin)
 
 **Problem**: When running tests, all tests fail immediately with:
+
 ```
 Error: Error processing Instruction 0: custom program error: 0x1775
 ```
@@ -837,6 +972,7 @@ Error: Error processing Instruction 0: custom program error: 0x1775
 **Cause**: The CP-AMM program wasn't built with the `local` feature flag, so it's enforcing production admin authorization checks against test keypairs.
 
 **Solution**:
+
 ```bash
 # Rebuild with local feature
 anchor build -- --features local
@@ -862,6 +998,7 @@ The `local` feature is defined in `programs/cp-amm/Cargo.toml` and bypasses admi
 **Problem**: Crank distribution transactions fail with "exceeded CU limit"
 
 **Solution**: Always include a compute budget instruction:
+
 ```typescript
 const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
   units: 400_000
@@ -1072,7 +1209,7 @@ pub fn call_initialize_honorary_position(ctx: Context<YourContext>) -> Result<()
         system_program: ctx.accounts.system_program.to_account_info(),
     };
     let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-    
+
     initialize_honorary_position(cpi_ctx)
 }
 ```
@@ -1094,7 +1231,7 @@ pub fn call_setup_policy(
         system_program: ctx.accounts.system_program.to_account_info(),
     };
     let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
-    
+
     setup_policy(cpi_ctx, params)
 }
 ```
@@ -1117,7 +1254,7 @@ pub fn call_crank_distribution(
         pool: ctx.accounts.pool.to_account_info(),
         // ... other accounts
     };
-    
+
     let mut cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
     cpi_ctx.remaining_accounts = ctx.remaining_accounts.to_vec();
 
@@ -1141,7 +1278,9 @@ import { Program, AnchorProvider, web3 } from "@coral-xyz/anchor";
 import { Connection, PublicKey } from "@solana/web3.js";
 
 // Fee router program ID
-const FEE_ROUTER_PROGRAM_ID = new PublicKey("5B57SJ3g2YoNXUpsZqqjEQkRSxyKtVTQRXdgAirz6bio");
+const FEE_ROUTER_PROGRAM_ID = new PublicKey(
+  "5B57SJ3g2YoNXUpsZqqjEQkRSxyKtVTQRXdgAirz6bio"
+);
 
 // Load IDL (download from GitHub repo)
 import feeRouterIdl from "./fee_router.json";
@@ -1251,7 +1390,9 @@ Read fee router account states:
 
 ```typescript
 // Fetch position owner state
-const positionOwner = await program.account.investorFeePositionOwner.fetch(positionOwnerPDA);
+const positionOwner = await program.account.investorFeePositionOwner.fetch(
+  positionOwnerPDA
+);
 
 // Fetch policy state
 const policy = await program.account.policy.fetch(policyPDA);
@@ -1261,7 +1402,10 @@ const progress = await program.account.distributionProgress.fetch(progressPDA);
 
 console.log("Total fees claimed:", positionOwner.totalFeesClaimed.toString());
 console.log("Investor fee share:", policy.investorFeeShareBps, "bps");
-console.log("Last distribution:", new Date(progress.lastDistributionTs.toNumber() * 1000));
+console.log(
+  "Last distribution:",
+  new Date(progress.lastDistributionTs.toNumber() * 1000)
+);
 ```
 
 ### 6. Event Monitoring
@@ -1351,6 +1495,7 @@ await program.methods
 ```
 
 **Why 400K units?**
+
 - Default Solana compute limit: 200K units
 - Streamflow SDK uses floating-point math in `available_to_claim()`: ~150K units per investor
 - With overhead for fee calculations and transfers: 300-400K total
@@ -1376,9 +1521,10 @@ for (let page = 0; page < pagesNeeded; page++) {
 
   // CRITICAL: First page needs ALL investors for on-chain total calculation
   // Subsequent pages only need their page's investors
-  const investorAccountsForPage = page === 0
-    ? allInvestorAccounts  // First page: ALL investors
-    : allInvestorAccounts.slice(pageStart, pageEnd); // Subsequent: just current page
+  const investorAccountsForPage =
+    page === 0
+      ? allInvestorAccounts // First page: ALL investors
+      : allInvestorAccounts.slice(pageStart, pageEnd); // Subsequent: just current page
 
   await crankDistribution(banksClient, {
     cranker: payer,
@@ -1402,6 +1548,7 @@ for (let page = 0; page < pagesNeeded; page++) {
 ```
 
 **Key Points:**
+
 - First page (`page === 0`): Pass ALL investors for on-chain total locked calculation
 - Subsequent pages: Pass only current page's slice
 - **Transaction scalability**:
@@ -1419,12 +1566,14 @@ For deployments with more than 5 investors, **Address Lookup Tables (ALTs)** are
 ### Why ALTs Are Needed
 
 **Problem**: Solana transactions have a 1232-byte size limit. Each investor requires 2 accounts (stream + ATA) = 64 bytes per investor.
+
 - Without ALTs: ~5 investors maximum
 - With ALTs: 25+ investors per transaction (tested), theoretically 100+ (addresses compressed to 1-byte indices)
 
 **Solution**: ALTs compress 32-byte addresses into 1-byte indices, reducing transaction size by 97% per address.
 
 **Test Coverage**: Our test suite includes 2 comprehensive ALT tests:
+
 1. Single-page distribution to 25 investors using ALT
 2. Multi-page distribution to 30 investors (15 per page) using ALT
 
@@ -1473,11 +1622,10 @@ for (let i = 0; i < addresses.length; i += chunkSize) {
     addresses: chunk,
   });
 
-  await sendAndConfirmTransaction(
-    connection,
-    new Transaction().add(extendIx),
-    [payer, authority]
-  );
+  await sendAndConfirmTransaction(connection, new Transaction().add(extendIx), [
+    payer,
+    authority,
+  ]);
 }
 
 // 4. Fetch lookup table account for use in transactions
@@ -1489,10 +1637,7 @@ const lookupTableAccount = (
 ### Using ALTs in Crank Distribution
 
 ```typescript
-import {
-  TransactionMessage,
-  VersionedTransaction,
-} from "@solana/web3.js";
+import { TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 
 // Build transaction with ALT support
 const message = TransactionMessage.compile({
@@ -1502,7 +1647,9 @@ const message = TransactionMessage.compile({
     ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }),
     await program.methods
       .crankDistribution(pageStart, pageSize)
-      .accounts({ /* ... */ })
+      .accounts({
+        /* ... */
+      })
       .remainingAccounts(investorAccountMetas) // Large investor array
       .instruction(),
   ],
@@ -1532,14 +1679,14 @@ const lookupTable = await createAndPopulateLookupTable(
 
 ### Benefits
 
-| Metric | Without ALTs | With ALTs |
-|--------|--------------|-----------|
-| Max investors per tx | ~5 | 25+ (tested), 100+ theoretical |
-| Address size | 32 bytes | 1 byte |
-| Compression ratio | 1x | 32x |
-| Setup cost | $0 | ~$0.01 SOL (one-time) |
-| Performance | Same | Same |
-| Test coverage | ✅ Tested | ✅ Tested (2 tests) |
+| Metric               | Without ALTs | With ALTs                      |
+| -------------------- | ------------ | ------------------------------ |
+| Max investors per tx | ~5           | 25+ (tested), 100+ theoretical |
+| Address size         | 32 bytes     | 1 byte                         |
+| Compression ratio    | 1x           | 32x                            |
+| Setup cost           | $0           | ~$0.01 SOL (one-time)          |
+| Performance          | Same         | Same                           |
+| Test coverage        | ✅ Tested    | ✅ Tested (2 tests)            |
 
 ### ALT Management Best Practices
 
@@ -1561,9 +1708,22 @@ const lookupTable = await createAndPopulateLookupTable(
 
 ## 🗄 Account Structure
 
-### InvestorFeePositionOwner (PDA)
+### Quick Reference: All PDAs
+
+| Account Name | Type | PDA Seeds | Purpose | Size (bytes) |
+|--------------|------|-----------|---------|--------------|
+| **InvestorFeePositionOwner** | PDA | `[b"vault", vault, b"investor_fee_pos_owner"]` | Owns the honorary position and signs CPIs | 8 + 168 = 176 |
+| **Policy** | PDA | `[b"policy", vault]` | Stores distribution policy parameters | 8 + 128 = 136 |
+| **DistributionProgress** | PDA | `[b"progress", vault]` | Tracks daily distribution state | 8 + 152 = 160 |
+| **Treasury ATA (Quote)** | PDA | `[b"treasury", vault, quote_mint]` | Holds claimed quote fees | Standard ATA |
+| **Treasury ATA (Base)** | PDA | `[b"treasury", vault, base_mint]` | Should remain empty (quote-only) | Standard ATA |
+
+### Detailed Account Structures
+
+#### InvestorFeePositionOwner (PDA)
 
 **Seeds**: `[b"vault", vault.key().as_ref(), b"investor_fee_pos_owner"]`
+**Purpose**: Program-owned PDA that holds the honorary position NFT and signs all CP-AMM CPIs
 
 ```rust
 pub struct InvestorFeePositionOwner {
@@ -1578,9 +1738,10 @@ pub struct InvestorFeePositionOwner {
 }
 ```
 
-### Policy
+#### Policy
 
 **Seeds**: `[b"policy", vault.key().as_ref()]`
+**Purpose**: Stores all distribution policy configuration (fee shares, caps, Y0 allocation)
 
 ```rust
 pub struct Policy {
@@ -1597,9 +1758,10 @@ pub struct Policy {
 }
 ```
 
-### DistributionProgress
+#### DistributionProgress
 
 **Seeds**: `[b"progress", vault.key().as_ref()]`
+**Purpose**: Tracks daily distribution progress, pagination state, and cumulative lifetime statistics
 
 ```rust
 pub struct DistributionProgress {
@@ -1623,7 +1785,115 @@ pub struct DistributionProgress {
 
 ## 📡 Events
 
-### HonoraryPositionInitialized
+The fee router emits events for all major state transitions, enabling off-chain monitoring and analytics.
+
+### Event Summary
+
+| Event Name | When Emitted | Key Data | Use Case |
+|------------|--------------|----------|----------|
+| **HonoraryPositionInitialized** | Position creation | vault, pool, position, quote_mint | Track new fee routers deployed |
+| **PolicySetup** | Policy configuration | investor_fee_share_bps, y0_total_allocation | Monitor policy changes |
+| **QuoteFeesClaimed** | Fee claim from CP-AMM | amount | Track fee accrual rates |
+| **InvestorPayoutPage** | Each distribution page | investors_paid, total_paid, dust_carried | Monitor distribution progress |
+| **CreatorPayoutDayClosed** | Day completion | creator_amount, total_distributed | Track creator earnings |
+
+### Subscribing to Events
+
+**TypeScript/JavaScript Example:**
+
+```typescript
+import { Program, BN } from "@coral-xyz/anchor";
+import { Connection, PublicKey } from "@solana/web3.js";
+
+// Setup event listener for all fee router events
+const connection = new Connection("https://api.mainnet-beta.solana.com");
+const program = anchor.workspace.FeeRouter as Program<FeeRouter>;
+
+// Listen for QuoteFeesClaimed events
+const listener = program.addEventListener("QuoteFeesClaimed", (event, slot) => {
+  console.log(`[Slot ${slot}] Fees claimed:`, {
+    vault: event.vault.toString(),
+    amount: event.amount.toString(),
+    amountFormatted: (event.amount.toNumber() / 1e9).toFixed(6), // Assuming 9 decimals
+    timestamp: new Date(event.timestamp.toNumber() * 1000).toISOString(),
+  });
+});
+
+// Listen for InvestorPayoutPage events (pagination tracking)
+program.addEventListener("InvestorPayoutPage", (event, slot) => {
+  console.log(`[Slot ${slot}] Investor payout page:`, {
+    vault: event.vault.toString(),
+    pageStart: event.pageStart,
+    investorsPaid: event.investorsPaid,
+    totalPaid: (event.totalPaid.toNumber() / 1e9).toFixed(6),
+    dustCarried: event.dustCarried.toString(),
+  });
+});
+
+// Listen for CreatorPayoutDayClosed events (day completion)
+program.addEventListener("CreatorPayoutDayClosed", (event, slot) => {
+  console.log(`[Slot ${slot}] Day closed:`, {
+    vault: event.vault.toString(),
+    creatorAmount: (event.creatorAmount.toNumber() / 1e9).toFixed(6),
+    totalDistributed: (event.totalDistributed.toNumber() / 1e9).toFixed(6),
+  });
+});
+
+// Remove listener when done
+// program.removeEventListener(listener);
+```
+
+**Filter Events by Vault:**
+
+```typescript
+// Only listen to events for a specific vault
+const targetVault = new PublicKey("YOUR_VAULT_PUBKEY");
+
+program.addEventListener("InvestorPayoutPage", (event, slot) => {
+  if (event.vault.equals(targetVault)) {
+    console.log("Payout for my vault:", event);
+  }
+});
+```
+
+**Historical Event Parsing:**
+
+```typescript
+// Fetch transaction logs and parse events
+const signature = "YOUR_TRANSACTION_SIGNATURE";
+const tx = await connection.getTransaction(signature, {
+  maxSupportedTransactionVersion: 0,
+});
+
+if (tx?.meta?.logMessages) {
+  const events = [];
+  let eventData = null;
+
+  for (const log of tx.meta.logMessages) {
+    if (log.startsWith("Program data: ")) {
+      const data = log.slice("Program data: ".length);
+      const buffer = Buffer.from(data, "base64");
+
+      // Parse event discriminator and data
+      // Event discriminators are first 8 bytes
+      const discriminator = buffer.slice(0, 8);
+
+      // Decode based on event type
+      // (Use your IDL to determine event structure)
+      eventData = program.coder.events.decode(buffer.toString("base64"));
+      if (eventData) {
+        events.push(eventData);
+      }
+    }
+  }
+
+  console.log("Parsed events:", events);
+}
+```
+
+### Event Definitions
+
+#### HonoraryPositionInitialized
 
 Emitted when a new honorary position is created.
 
@@ -1639,7 +1909,7 @@ pub struct HonoraryPositionInitialized {
 }
 ```
 
-### PolicySetup
+#### PolicySetup
 
 Emitted when distribution policy is configured.
 
@@ -1654,7 +1924,7 @@ pub struct PolicySetup {
 }
 ```
 
-### QuoteFeesClaimed
+#### QuoteFeesClaimed
 
 Emitted when fees are claimed from the honorary position.
 
@@ -1667,7 +1937,7 @@ pub struct QuoteFeesClaimed {
 }
 ```
 
-### InvestorPayoutPage
+#### InvestorPayoutPage
 
 Emitted for each page of investor distributions.
 
@@ -1684,7 +1954,7 @@ pub struct InvestorPayoutPage {
 }
 ```
 
-### CreatorPayoutDayClosed
+#### CreatorPayoutDayClosed
 
 Emitted when the day's distribution is complete and creator receives remainder.
 
@@ -1702,40 +1972,35 @@ pub struct CreatorPayoutDayClosed {
 
 ## ⚠️ Error Codes
 
+| Code | Hex | Name | Description | Common Cause | Resolution |
+|------|-----|------|-------------|--------------|------------|
+| 6000 | 0x1770 | **QuoteOnlyValidationFailed** | Pool not configured for quote-only fee collection | Pool has `collectFeeMode = 0` (BothToken) | Use pool with `collectFeeMode = 1` (OnlyB) and correct quote mint |
+| 6001 | 0x1771 | **BaseFeesDetected** | Base token fees detected during crank | Pool configuration changed or wrong pool | Fix pool configuration, ensure quote-only mode |
+| 6002 | 0x1772 | **CrankWindowNotReached** | Attempted crank before 24h elapsed | Called too soon after last distribution | Wait until `last_distribution_ts + 86400` seconds |
+| 6003 | 0x1773 | **InvalidPagination** | Invalid page_start or page_size parameters | page_size > 50 or page_start out of bounds | Use `page_size ≤ 50`, sequential page_start (0, 50, 100...) |
+| 6004 | 0x1774 | **InsufficientStreamflowData** | Cannot read Streamflow contract data | Invalid stream account or wrong discriminator | Verify Streamflow account addresses, check account exists |
+| 6005 | 0x1775 | **DistributionAlreadyComplete** | Day's distribution already finished | Attempting to crank after final page | Wait 24h for next distribution window |
+| 6006 | 0x1776 | **InvalidPoolConfiguration** | Pool incompatible with honorary position | Pool status disabled or invalid fee mode | Use enabled pool with valid `collectFeeMode` |
+| 6007 | 0x1777 | **MathOverflow** | Arithmetic overflow in calculations | Extremely large fee amounts or Y0 | Check policy parameters, reduce fee amounts |
+| 6008 | 0x1778 | **AccountCountMismatch** | Wrong number of remaining_accounts | Odd number of accounts (not stream+ATA pairs) | Provide accounts in pairs: [stream, ATA, stream, ATA, ...] |
+| 6009 | 0x1779 | **DailyCapExceeded** | Daily distribution cap reached | More fees than daily_cap_lamports | Normal operation, excess carried to next day |
+| 6010 | 0x177A | **InvalidPositionOwnership** | Position not owned by correct PDA | Position owner mismatch | Verify position owned by InvestorFeePositionOwnerPda |
+
+### Error Code Reference (Rust)
+
 ```rust
 #[error_code]
 pub enum HonouraryError {
-    #[msg("Quote-only validation failed - pool is not configured correctly")]
     QuoteOnlyValidationFailed = 6000,
-
-    #[msg("Base fees detected - distribution aborted")]
     BaseFeesDetected = 6001,
-
-    #[msg("Crank window not reached - must wait 24h between distributions")]
     CrankWindowNotReached = 6002,
-
-    #[msg("Invalid pagination parameters")]
     InvalidPagination = 6003,
-
-    #[msg("Insufficient Streamflow data")]
     InsufficientStreamflowData = 6004,
-
-    #[msg("Distribution already complete for this day")]
     DistributionAlreadyComplete = 6005,
-
-    #[msg("Invalid pool configuration - not compatible with quote-only fee accrual")]
     InvalidPoolConfiguration = 6006,
-
-    #[msg("Math overflow in distribution calculations")]
     MathOverflow = 6007,
-
-    #[msg("Account count mismatch - expected pairs of (stream, ata)")]
     AccountCountMismatch = 6008,
-
-    #[msg("Daily cap exceeded")]
     DailyCapExceeded = 6009,
-
-    #[msg("Invalid position ownership")]
     InvalidPositionOwnership = 6010,
 }
 ```
@@ -1881,24 +2146,45 @@ Tests verify this with explicit assertions on expected vs actual distributions.
 
 ## 🔢 Constants
 
-The program uses the following constants for validation and calculations:
+### Program Constants
+
+| Constant | Type | Value | Description | Usage |
+|----------|------|-------|-------------|-------|
+| **SECONDS_PER_DAY** | `i64` | `86400` | 24-hour window in seconds | 24h crank gating validation |
+| **BASIS_POINTS_DIVISOR** | `u64` | `10000` | Basis points divisor (100% = 10000 bps) | Fee share calculations |
+| **PRECISION_MULTIPLIER** | `u64` | `1_000_000` | Precision multiplier for calculations | Pro-rata math precision |
+| **MAX_PAGE_SIZE** | `u32` | `50` | Maximum investors per page | Pagination bounds checking |
+| **MIN_PAYOUT_THRESHOLD** | `u64` | `1000` | Minimum payout in lamports | Dust threshold (0.000001 tokens @ 9 decimals) |
+
+### PDA Seeds
+
+| PDA | Seeds | Description |
+|-----|-------|-------------|
+| Position Owner | `[b"vault", vault, b"investor_fee_pos_owner"]` | Owns honorary position NFT |
+| Policy | `[b"policy", vault]` | Distribution policy config |
+| Progress | `[b"progress", vault]` | Daily progress tracking |
+| Treasury ATA | `[b"treasury", vault, mint]` | Fee collection accounts |
+
+### External Program IDs
+
+| Program | Network | Program ID | Purpose |
+|---------|---------|------------|---------|
+| **CP-AMM (DAMM v2)** | Localnet | `ASmKWt93JEMHxbdE6j7znD9y2FcdPboCzC3xtSTJvN7S` | Concentrated liquidity AMM (Meteora fork) |
+| **CP-AMM (DAMM v2)** | Mainnet | `cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG` | Production CP-AMM program |
+| **Streamflow** | All Networks | `strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m` | Token vesting program |
+
+### Rust Reference
 
 ```rust
 // From programs/fee_router/src/constants.rs
-pub const SECONDS_PER_DAY: i64 = 86400;           // 24-hour window
-pub const BASIS_POINTS_DIVISOR: u64 = 10000;      // For BPS calculations
-pub const PRECISION_MULTIPLIER: u64 = 1_000_000;  // Math precision
-pub const MAX_PAGE_SIZE: u32 = 50;                // Maximum investors per page
-pub const MIN_PAYOUT_THRESHOLD: u64 = 1000;       // Minimum payout (lamports)
-```
+pub const SECONDS_PER_DAY: i64 = 86400;
+pub const BASIS_POINTS_DIVISOR: u64 = 10000;
+pub const PRECISION_MULTIPLIER: u64 = 1_000_000;
+pub const MAX_PAGE_SIZE: u32 = 50;
+pub const MIN_PAYOUT_THRESHOLD: u64 = 1000;
 
-**External Program IDs:**
-
-```rust
-// CP-AMM (DAMM v2) - Meteora's Concentrated Liquidity AMM
+// External program IDs
 pub const CP_AMM_PROGRAM_ID: Pubkey = pubkey!("ASmKWt93JEMHxbdE6j7znD9y2FcdPboCzC3xtSTJvN7S");
-
-// Streamflow - Token vesting program
 pub const STREAMFLOW_PROGRAM_ID: Pubkey = pubkey!("strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m");
 ```
 
@@ -1906,17 +2192,17 @@ pub const STREAMFLOW_PROGRAM_ID: Pubkey = pubkey!("strmRqUCoQUgGUan5YhzUZa6Kqdzw
 
 ## ⚠️ Failure Modes & Recovery
 
-| Scenario                          | Behavior                                                    | Recovery                                          |
-| --------------------------------- | ----------------------------------------------------------- | ------------------------------------------------- |
-| **Base fees detected**            | Crank fails with `BaseFeesDetected`, NO distribution occurs | Fix pool configuration, retry after 24h           |
-| **Insufficient treasury balance** | Transfer fails, page fails atomically                       | Add quote tokens to treasury, retry page          |
-| **Invalid Streamflow data**       | Fails with `InsufficientStreamflowData`                     | Verify Streamflow accounts are correct, retry     |
-| **Crank too early**               | Fails with `CrankWindowNotReached`                          | Wait until 24h elapsed from last distribution     |
-| **Page size too large**           | Fails with `InvalidPagination`                              | Use `page_size` ≤ 50 (MAX_PAGE_SIZE)              |
-| **Missing investor ATA**          | Page fails with account error                               | Create missing ATA, retry same page               |
-| **Network timeout mid-page**      | Page may partially fail                                     | Retry same page (idempotent, safe)                |
-| **Daily cap reached**             | Remaining payouts carried to next day                       | Normal operation, crank again after 24h           |
-| **Wrong pagination order**        | May skip investors or duplicate                             | Always process pages sequentially (0, 50, 100...) |
+| Scenario                          | Behavior                                                    | Recovery                                                                  |
+| --------------------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------- |
+| **Base fees detected**            | Crank fails with `BaseFeesDetected`, NO distribution occurs | Fix pool configuration, retry after 24h                                   |
+| **Insufficient treasury balance** | Transfer fails, page fails atomically                       | Add quote tokens to treasury, retry page                                  |
+| **Invalid Streamflow data**       | Fails with `InsufficientStreamflowData`                     | Verify Streamflow accounts are correct, retry                             |
+| **Crank too early**               | Fails with `CrankWindowNotReached`                          | Wait until 24h elapsed from last distribution                             |
+| **Page size too large**           | Fails with `InvalidPagination`                              | Use `page_size` ≤ 50 (MAX_PAGE_SIZE)                                      |
+| **Missing investor ATA**          | Page fails with account error                               | Create missing ATA, retry same page                                       |
+| **Network timeout mid-page**      | Page may partially fail                                     | Retry same page (idempotent, safe)                                        |
+| **Daily cap reached**             | Remaining payouts carried to next day                       | Normal operation, crank again after 24h                                   |
+| **Wrong pagination order**        | May skip investors or duplicate                             | Always process pages sequentially (0, 50, 100...)                         |
 | **Incorrect remaining_accounts**  | First page fails or calculates wrong total                  | First page MUST include ALL investors; subsequent pages only current page |
 | **Transaction too large**         | First page fails with size limit error                      | Reduce total investors or use smaller batches (tested: 5 investors works) |
 
@@ -1925,6 +2211,95 @@ pub const STREAMFLOW_PROGRAM_ID: Pubkey = pubkey!("strmRqUCoQUgGUan5YhzUZa6Kqdzw
 - ✅ Re-running the same page with same parameters is always safe
 - ✅ Progress tracking ensures no double-payments
 - ✅ Creator payout only occurs on truly final page
+
+---
+
+## 🔧 Troubleshooting FAQ
+
+Common issues encountered during integration and testing, with solutions.
+
+### Build & Test Issues
+
+| Issue | Symptoms | Root Cause | Solution |
+|-------|----------|------------|----------|
+| **Error 0x1775 (InvalidAdmin)** | All tests fail immediately with custom program error 0x1775 | CP-AMM program not built with `local` feature | Run `anchor build -- --features local` before testing |
+| **Tests timing out** | Tests run for 2+ minutes and timeout | Default timeout too short for bankrun | Use `-t 300000` flag: `pnpm exec ts-mocha -t 300000 tests/feeRouter.test.ts` |
+| **2 pending tests (Alpha Vault)** | Test suite shows "89 passing, 2 pending" | Alpha vault tests intentionally skipped | Expected behavior - alpha vault tests require incompatible binary fixture |
+| **"bigint: Failed to load bindings"** | Warning at test start | Optional native bindings not compiled | Safe to ignore - tests use pure JS fallback |
+
+### Runtime Errors
+
+| Issue | Symptoms | Root Cause | Solution |
+|-------|----------|------------|----------|
+| **Compute budget exceeded** | Transaction fails with "exceeded CU limit" | Default 200K CU insufficient for Streamflow SDK | Add compute budget instruction: `ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 })` |
+| **Transaction too large (0x01)** | First page fails with transaction size error | Too many investor accounts without ALTs | Use Address Lookup Tables for >5 investors (see [ALT Integration](#-address-lookup-table-integration-for-scalability)) |
+| **Base fees detected (0x1771)** | Crank fails with `BaseFeesDetected` | Pool has `collectFeeMode = 0` or wrong configuration | Verify pool has `collectFeeMode = 1` (OnlyB) and correct quote mint |
+| **Insufficient Streamflow data (0x1774)** | Cannot read stream accounts | Wrong account address or discriminator mismatch | Verify Streamflow account is valid Contract account with correct discriminator |
+| **Account count mismatch (0x1778)** | Crank fails with odd number of accounts | Incorrect remaining_accounts format | Provide accounts in pairs: `[stream, ATA, stream, ATA, ...]` |
+
+### Integration Issues
+
+| Issue | Symptoms | Root Cause | Solution |
+|-------|----------|------------|----------|
+| **Wrong total locked calculation** | Distributions don't match expected amounts | First page not including ALL investors | First page MUST pass ALL investor accounts for on-chain total calculation |
+| **Skipped investors** | Some investors not receiving payouts | Pages processed out of order | Process pages sequentially: 0, page_size, 2*page_size, ... |
+| **Double payments** | Investors paid twice | Re-running same page with different parameters | Don't modify investor set between pages of same day |
+| **Creator not receiving remainder** | Creator balance unchanged after final page | Day not marked complete or not final page | Ensure all pages processed; check `progress.day_completed` |
+
+### Development Tips
+
+**Q: How do I debug Streamflow integration issues?**
+
+A: Enable verbose logging and inspect the Contract account:
+```typescript
+const streamData = await banksClient.getAccount(streamAccountPubkey);
+console.log("Stream account data length:", streamData?.data.length);
+console.log("First 8 bytes (discriminator):", streamData?.data.slice(0, 8));
+// Should be: [172, 138, 115, 242, 121, 67, 183, 26]
+```
+
+**Q: How do I test with real Streamflow accounts?**
+
+A: The test suite already uses the real Streamflow mainnet program binary (`tests/fixtures/streamflow.so`). To update it:
+```bash
+solana program dump strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m tests/fixtures/streamflow.so --url mainnet-beta
+```
+
+**Q: How do I verify quote-only pool configuration?**
+
+A: Check the pool's `collect_fee_mode` and token order:
+```typescript
+const pool = await program.account.pool.fetch(poolPubkey);
+console.log("Collect fee mode:", pool.collectFeeMode); // Must be 1 (OnlyB)
+console.log("Token B mint:", pool.tokenBMint.toString()); // Must match quote mint
+```
+
+**Q: How do I estimate compute units needed?**
+
+A: Use simulation to get accurate CU usage:
+```typescript
+const simulation = await connection.simulateTransaction(transaction);
+console.log("Compute units used:", simulation.value.unitsConsumed);
+// Typical: ~350K CU for 10 investors with Streamflow calculations
+```
+
+**Q: Why is my first page transaction failing with size limit?**
+
+A: First page needs ALL investor accounts for total calculation. Solutions:
+1. Use Address Lookup Tables (recommended for >5 investors)
+2. Reduce investor count per deployment
+3. Split into multiple vaults if >100 investors
+
+### Quick Reference: Common Error Codes
+
+| Code | Name | Quick Fix |
+|------|------|-----------|
+| 0x1770 | QuoteOnlyValidationFailed | Use pool with `collectFeeMode = 1` |
+| 0x1771 | BaseFeesDetected | Fix pool configuration |
+| 0x1772 | CrankWindowNotReached | Wait 24h from last distribution |
+| 0x1773 | InvalidPagination | Use `page_size ≤ 50` |
+| 0x1774 | InsufficientStreamflowData | Verify Streamflow account validity |
+| 0x1775 | InvalidAdmin (CP-AMM) | Build with `--features local` |
 
 ---
 
