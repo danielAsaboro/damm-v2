@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[derive(Accounts)]
-#[instruction(page_start: u32, page_size: u32)]
+#[instruction(page_start: u32, page_size: u32, total_locked_all_investors: u64, is_final_page: bool)]
 pub struct CrankDistribution<'info> {
     /// Anyone can call the crank (permissionless)
     pub cranker: Signer<'info>,
@@ -135,8 +135,12 @@ pub fn handle_crank_distribution<'info>(
     ctx: Context<'_, '_, '_, 'info, CrankDistribution<'info>>,
     page_start: u32,
     page_size: u32,
-    total_locked_all_investors: u64
+    total_locked_all_investors: u64,
+    is_final_page: bool
 ) -> Result<()> {
+    // Note: Compute budget must be set by the client via ComputeBudgetProgram.setComputeUnitLimit()
+    // We need ~400K units for Streamflow SDK calculations with floating-point operations
+
     let progress = &mut ctx.accounts.progress;
     let policy = &ctx.accounts.policy;
     let current_time = Clock::get()?.unix_timestamp;
@@ -215,10 +219,15 @@ pub fn handle_crank_distribution<'info>(
     };
 
     // Parse investor data from remaining accounts (inline to avoid lifetime issues)
-    let start_idx = (page_start * 2) as usize; // 2 accounts per investor (stream + ATA)
-    let end_idx = ((page_start + page_size) * 2) as usize;
+    // Per bounty spec line 28: pagination means we only receive accounts for THIS page
+    // remaining_accounts contains exactly page_size * 2 accounts (stream + ATA per investor)
+    let start_idx = 0; // Always start at beginning of provided page slice
+    let end_idx = (page_size * 2) as usize; // End at page_size worth of investors
 
-    require!(end_idx <= ctx.remaining_accounts.len(), HonouraryError::InvalidPagination);
+    require!(
+        ctx.remaining_accounts.len() == end_idx,
+        HonouraryError::InvalidPagination
+    );
 
     let mut individual_locked = Vec::new();
 
@@ -406,10 +415,8 @@ pub fn handle_crank_distribution<'info>(
     progress.pagination_cursor = page_start + page_size;
     progress.total_investor_distributed += page_distributed;
 
-    // Check if this is the final page
-    // Final page is when we've processed all remaining accounts
-    let is_final_page = end_idx >= ctx.remaining_accounts.len();
-
+    // On final page, close out the day and send remainder to creator
+    // Caller signals final page via is_final_page parameter
     if is_final_page {
         // Send remainder to creator
         let remainder = calculate_creator_remainder(

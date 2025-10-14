@@ -11,6 +11,7 @@ import BN from "bn.js";
 import { processTransactionMaybeThrow } from "./common";
 import { getOrCreateAssociatedTokenAccount } from "./token";
 import { StreamflowSolana } from "@streamflow/stream";
+import * as BufferLayout from "@solana/buffer-layout";
 
 /**
  * Streamflow program ID (mainnet)
@@ -76,7 +77,14 @@ export async function createRealStreamflowStream(
     cliffAmount = new BN(0),
     withdrawnAmount = new BN(0),
     period = new BN(1),
+    amountPerPeriod,
   } = params;
+
+  // If amountPerPeriod not provided, calculate it based on duration
+  const calculatedAmountPerPeriod = amountPerPeriod ||
+    (endTime.sub(startTime).gtn(0)
+      ? depositedAmount.div(endTime.sub(startTime))
+      : depositedAmount);
 
   // Generate a stream account keypair
   const streamKeypair = Keypair.generate();
@@ -94,16 +102,15 @@ export async function createRealStreamflowStream(
     cliffAmount,
     withdrawnAmount,
     period,
+    amountPerPeriod: calculatedAmountPerPeriod,
   });
 
   // Create the account on-chain with proper ownership and data
   const rent = await banksClient.getRent();
-  // Use a larger amount to ensure rent exemption (simple approach)
-  const lamports = Math.max(
-    Number(rent.lamportsPerByteYear) * streamData.length +
-      Number(rent.exemptionThreshold),
-    10000000 // 0.01 SOL minimum
-  );
+  // Calculate proper rent exemption for the account size
+  // Formula: (dataSize + 128) * rent.lamportsPerByteYear
+  // The 128 is for account overhead
+  const lamports = Number(rent.minimumBalance(BigInt(streamData.length)));
 
   // Create account with initial data using SystemProgram.createAccount
   const createAccountIx = SystemProgram.createAccount({
@@ -140,10 +147,64 @@ export async function createRealStreamflowStream(
   return streamKeypair.publicKey;
 }
 
+// Define the Streamflow Contract layout matching the Streamflow SDK
+// This matches the structure in streamflow-sdk-0.10.0/src/state.rs
+const CREATE_PARAMS_PADDING = 832;
+
+const streamLayout = BufferLayout.struct([
+  BufferLayout.blob(8, "magic"),
+  BufferLayout.blob(1, "version"),
+  BufferLayout.blob(8, "created_at"),
+  BufferLayout.blob(8, "withdrawn_amount"),
+  BufferLayout.blob(8, "canceled_at"),
+  BufferLayout.blob(8, "end_time"),
+  BufferLayout.blob(8, "last_withdrawn_at"),
+  BufferLayout.blob(32, "sender"),
+  BufferLayout.blob(32, "sender_tokens"),
+  BufferLayout.blob(32, "recipient"),
+  BufferLayout.blob(32, "recipient_tokens"),
+  BufferLayout.blob(32, "mint"),
+  BufferLayout.blob(32, "escrow_tokens"),
+  BufferLayout.blob(32, "streamflow_treasury"),
+  BufferLayout.blob(32, "streamflow_treasury_tokens"),
+  BufferLayout.blob(8, "streamflow_fee_total"),
+  BufferLayout.blob(8, "streamflow_fee_withdrawn"),
+  BufferLayout.f32("streamflow_fee_percent"),
+  BufferLayout.blob(32, "partner"),
+  BufferLayout.blob(32, "partner_tokens"),
+  BufferLayout.blob(8, "partner_fee_total"),
+  BufferLayout.blob(8, "partner_fee_withdrawn"),
+  BufferLayout.f32("partner_fee_percent"),
+  BufferLayout.blob(8, "start_time"),
+  BufferLayout.blob(8, "net_amount_deposited"),
+  BufferLayout.blob(8, "period"),
+  BufferLayout.blob(8, "amount_per_period"),
+  BufferLayout.blob(8, "cliff"),
+  BufferLayout.blob(8, "cliff_amount"),
+  BufferLayout.u8("cancelable_by_sender"),
+  BufferLayout.u8("cancelable_by_recipient"),
+  BufferLayout.u8("automatic_withdrawal"),
+  BufferLayout.u8("transferable_by_sender"),
+  BufferLayout.u8("transferable_by_recipient"),
+  BufferLayout.u8("can_topup"),
+  BufferLayout.blob(64, "stream_name"),
+  BufferLayout.blob(8, "withdraw_frequency"),
+  // Unused, kept for backward compatibility
+  BufferLayout.blob(4, "ghost"),
+  BufferLayout.u8("pausable"),
+  BufferLayout.u8("can_update_rate"),
+  BufferLayout.blob(4, "create_stream_params_padding_length"),
+  BufferLayout.seq(BufferLayout.u8(), CREATE_PARAMS_PADDING, "create_params_padding"),
+  BufferLayout.u8("closed"),
+  BufferLayout.blob(8, "current_pause_start"),
+  BufferLayout.blob(8, "pause_cumulative"),
+  BufferLayout.blob(8, "last_rate_change_time"),
+  BufferLayout.blob(8, "funds_unlocked_at_last_rate_change")
+]);
+
 /**
- * Create valid Streamflow account data structure
- * For testing purposes, we'll put the locked amount in the first 8 bytes
- * This bypasses the complex StreamflowContract deserialization
+ * Create valid Streamflow account data structure using the official layout
+ * This properly serializes all fields so the Rust SDK can deserialize correctly
  */
 function createStreamflowAccountData(params: {
   sender: PublicKey;
@@ -156,27 +217,86 @@ function createStreamflowAccountData(params: {
   cliffAmount: BN;
   withdrawnAmount: BN;
   period: BN;
+  amountPerPeriod: BN;
 }): Buffer {
-  // Create a simple buffer with the locked amount in the first 8 bytes
-  const buffer = Buffer.alloc(1000);
-  let offset = 0;
+  const {
+    sender,
+    recipient,
+    mint,
+    depositedAmount,
+    startTime,
+    endTime,
+    cliffAmount,
+    withdrawnAmount,
+    period,
+    amountPerPeriod,
+  } = params;
 
-  // For testing, we'll use the deposited amount as the locked amount
-  // This ensures that the test scenarios work correctly
-  // In a real implementation, this would be calculated based on vesting schedule
-  const lockedAmount = params.lockedAmountOverride ?? params.depositedAmount;
+  // Generate dummy addresses for escrow and treasury accounts
+  const escrowTokens = Keypair.generate().publicKey;
+  const senderTokens = Keypair.generate().publicKey;
+  const recipientTokens = Keypair.generate().publicKey;
+  const streamflowTreasury = Keypair.generate().publicKey;
+  const streamflowTreasuryTokens = Keypair.generate().publicKey;
+  const partner = PublicKey.default;
+  const partnerTokens = Keypair.generate().publicKey;
 
-  // Write locked amount in first 8 bytes (little-endian)
-  const lockedBuffer = lockedAmount.toArrayLike(Buffer, "le", 8);
-  lockedBuffer.copy(buffer, offset);
-  offset += 8;
+  // Prepare the data object matching the layout
+  const streamData = {
+    magic: Buffer.from([0x54, 0x45, 0x4d, 0x5f, 0x4d, 0x52, 0x54, 0x53]), // "STRM_MET" magic bytes in little-endian
+    version: Buffer.from([1]),
+    created_at: new BN(Math.floor(Date.now() / 1000)).toArrayLike(Buffer, "le", 8),
+    withdrawn_amount: withdrawnAmount.toArrayLike(Buffer, "le", 8),
+    canceled_at: new BN(0).toArrayLike(Buffer, "le", 8),
+    end_time: endTime.toArrayLike(Buffer, "le", 8),
+    last_withdrawn_at: new BN(0).toArrayLike(Buffer, "le", 8),
+    sender: sender.toBuffer(),
+    sender_tokens: senderTokens.toBuffer(),
+    recipient: recipient.toBuffer(),
+    recipient_tokens: recipientTokens.toBuffer(),
+    mint: mint.toBuffer(),
+    escrow_tokens: escrowTokens.toBuffer(),
+    streamflow_treasury: streamflowTreasury.toBuffer(),
+    streamflow_treasury_tokens: streamflowTreasuryTokens.toBuffer(),
+    streamflow_fee_total: new BN(0).toArrayLike(Buffer, "le", 8),
+    streamflow_fee_withdrawn: new BN(0).toArrayLike(Buffer, "le", 8),
+    streamflow_fee_percent: 0.0,
+    partner: partner.toBuffer(),
+    partner_tokens: partnerTokens.toBuffer(),
+    partner_fee_total: new BN(0).toArrayLike(Buffer, "le", 8),
+    partner_fee_withdrawn: new BN(0).toArrayLike(Buffer, "le", 8),
+    partner_fee_percent: 0.0,
+    start_time: startTime.toArrayLike(Buffer, "le", 8),
+    net_amount_deposited: depositedAmount.toArrayLike(Buffer, "le", 8),
+    period: period.toArrayLike(Buffer, "le", 8),
+    amount_per_period: amountPerPeriod.toArrayLike(Buffer, "le", 8),
+    cliff: cliffAmount.gtn(0) ? cliffAmount.toArrayLike(Buffer, "le", 8) : new BN(0).toArrayLike(Buffer, "le", 8),
+    cliff_amount: cliffAmount.toArrayLike(Buffer, "le", 8),
+    cancelable_by_sender: 1,
+    cancelable_by_recipient: 0,
+    automatic_withdrawal: 0,
+    transferable_by_sender: 1,
+    transferable_by_recipient: 0,
+    can_topup: 0,
+    stream_name: Buffer.alloc(64),
+    withdraw_frequency: new BN(0).toArrayLike(Buffer, "le", 8),
+    ghost: Buffer.alloc(4),
+    pausable: 0,
+    can_update_rate: 0,
+    create_stream_params_padding_length: Buffer.alloc(4),
+    create_params_padding: new Array(CREATE_PARAMS_PADDING).fill(0),
+    closed: 0,
+    current_pause_start: new BN(0).toArrayLike(Buffer, "le", 8),
+    pause_cumulative: new BN(0).toArrayLike(Buffer, "le", 8),
+    last_rate_change_time: startTime.toArrayLike(Buffer, "le", 8),
+    funds_unlocked_at_last_rate_change: new BN(0).toArrayLike(Buffer, "le", 8),
+  };
 
-  // Add some padding to make it look like a real account
-  const padding = Buffer.alloc(992);
-  padding.copy(buffer, offset);
-  offset += 992;
+  // Encode using the layout
+  const buffer = Buffer.alloc(streamLayout.span);
+  streamLayout.encode(streamData, buffer);
 
-  return buffer.slice(0, offset);
+  return buffer;
 }
 
 /**
@@ -264,7 +384,9 @@ export async function createInvestorStreams(
   // Equal allocation to each investor
   const perInvestorAllocation = totalAllocation.div(new BN(investorCount));
 
-  const currentTime = new BN(Math.floor(Date.now() / 1000));
+  // Get the actual blockchain time from the Clock sysvar
+  const clock = await banksClient.getClock();
+  const currentTime = new BN(Number(clock.unixTimestamp));
 
   for (let i = 0; i < investorCount; i++) {
     const recipient = Keypair.generate().publicKey;
@@ -274,42 +396,51 @@ export async function createInvestorStreams(
     const lockedPercent = lockedPercentages[i];
     const depositedAmount = perInvestorAllocation;
 
-    // For a linear vesting stream with X% locked:
-    // locked% = (depositedAmount - availableToWithdraw) / depositedAmount
-    // availableToWithdraw = depositedAmount * (elapsed / duration)
+    // For a linear vesting stream with X% locked at a specific time:
+    // We adjust each stream's start_time so that at the CURRENT blockchain time,
+    // the stream has the desired locked percentage.
+    //
+    // locked% = (depositedAmount - available) / depositedAmount
+    // available = depositedAmount * (elapsed / duration)
     // locked% = 1 - (elapsed / duration)
     // Therefore: elapsed / duration = 1 - locked%
     // elapsed = duration * (1 - locked%)
+    //
+    // Since we want all streams to be evaluated at currentTime:
+    // elapsed = currentTime - start_time
+    // duration * (1 - locked%) = currentTime - start_time
+    // start_time = currentTime - duration * (1 - locked%)
 
     const totalDuration = vestingEndTime.sub(vestingStartTime);
     const vestedFraction = (100 - lockedPercent) / 100; // 0.0 to 1.0
 
-    // Calculate how much time has elapsed to achieve the desired locked%
+    // Calculate how much time should have elapsed for this locked%
     const elapsedSeconds = Math.floor(
       totalDuration.toNumber() * vestedFraction
     );
-    const elapsed = new BN(elapsedSeconds);
 
-    // Effective current time for this stream
-    const effectiveCurrentTime = vestingStartTime.add(elapsed);
+    // Adjust start_time so that at currentTime, we have the right elapsed time
+    const adjustedStartTime = currentTime.sub(new BN(elapsedSeconds));
+    const adjustedEndTime = adjustedStartTime.add(totalDuration);
 
-    // amount_per_period for linear vesting over 1-second periods
-    const period = new BN(1);
-    const duration = vestingEndTime.sub(vestingStartTime).toNumber();
+    // Use 1-day periods to avoid amount_per_period rounding to zero with small amounts
+    // period = 86400 seconds (1 day)
+    const period = new BN(86400);
+    const duration = totalDuration.toNumber();
+    const periodsInDuration = Math.floor(duration / period.toNumber());
     const amountPerPeriod =
-      duration > 0 ? depositedAmount.div(new BN(duration)) : depositedAmount;
+      periodsInDuration > 0 ? depositedAmount.div(new BN(periodsInDuration)) : depositedAmount;
 
     // No withdrawals yet - all vested tokens are still available to claim
     const withdrawnAmount = new BN(0);
 
-    // Calculate actual locked amount based on the elapsed time
-    // locked = deposited - (deposited * vested_fraction)
+    // Calculate expected locked amount for verification
     const availableToWithdraw = Math.floor(
       depositedAmount.toNumber() * vestedFraction
     );
     const locked = depositedAmount.toNumber() - availableToWithdraw;
 
-    // Create real Streamflow stream using the actual program
+    // Create real Streamflow stream using adjusted times
     const streamPubkey = await createRealStreamflowStream(
       banksClient,
       payer,
@@ -321,8 +452,8 @@ export async function createInvestorStreams(
         mint,
         depositedAmount,
         lockedAmountOverride: new BN(Math.max(0, locked)),
-        startTime: vestingStartTime,
-        endTime: vestingEndTime,
+        startTime: adjustedStartTime,
+        endTime: adjustedEndTime,
         withdrawnAmount,
         amountPerPeriod,
         period,
@@ -331,6 +462,10 @@ export async function createInvestorStreams(
 
     streams.push(streamPubkey);
     lockedAmounts.push(new BN(Math.max(0, locked)));
+
+    console.log(
+      `  Stream ${i}: ${lockedPercent}% locked, expected locked amount: ${locked}, amount_per_period: ${amountPerPeriod.toString()}`
+    );
 
     // Create actual investor ATA for receiving fee distributions
     const investorWallet = recipient; // Use the recipient as the ATA owner

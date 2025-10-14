@@ -36,24 +36,7 @@ pub fn read_locked_amount_from_stream(
     stream_account: &AccountInfo,
     current_timestamp: i64
 ) -> Result<u64> {
-    // For testing purposes, read a fixed amount from the account data
-    // This bypasses the complex StreamflowContract deserialization
-    let data = stream_account.data.borrow();
-
-    // Check if this is a test account (has our mock data)
-    if data.len() >= 8 {
-        // Read the first 8 bytes as a u64 (little-endian) for the locked amount
-        let mut locked_bytes = [0u8; 8];
-        locked_bytes.copy_from_slice(&data[0..8]);
-        let locked_amount = u64::from_le_bytes(locked_bytes);
-
-        // If the value is non-zero, return it (this is our test data)
-        if locked_amount > 0 {
-            return Ok(locked_amount);
-        }
-    }
-
-    // Fallback: Use the official Streamflow SDK to parse the contract
+    // Use the official Streamflow SDK to parse the contract
     let stream_contract = StreamflowContract::deserialize(
         &mut &stream_account.data.borrow()[..]
     ).map_err(|e| {
@@ -65,7 +48,12 @@ pub fn read_locked_amount_from_stream(
     // locked = total_deposited - available_to_claim
     let current_timestamp_u64 = current_timestamp as u64;
     let total_deposited = stream_contract.ix.net_amount_deposited;
-    let available = stream_contract.available_to_claim(current_timestamp_u64, 0.0); // No fees for calculation
+
+    // Note: The Streamflow SDK's available_to_claim() has a bug where fee_percentage=0.0
+    // causes it to return 0 due to calculate_fee_from_amount returning 0 for 0%.
+    // We pass 100.0 to mean "100% available to recipient (0% fee to Streamflow)".
+    // This uses floating-point math, so we request additional compute units in crank_distribution.
+    let available = stream_contract.available_to_claim(current_timestamp_u64, 100.0);
     let locked_amount = total_deposited.saturating_sub(available);
 
     Ok(locked_amount)

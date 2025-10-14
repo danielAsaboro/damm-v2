@@ -961,7 +961,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
       // Advance time by 24 hours to start a new distribution window
       await advanceTime24Hours(context);
 
-      const investorCount = 6; // reduced to fit tx size limits
+      const investorCount = 5; // reduced to fit tx size limits with compute budget
       const pageSize = 2;
       const lockedPercentages = new Array(investorCount).fill(50);
 
@@ -1412,6 +1412,9 @@ describe("Fee Router - Comprehensive Test Suite", () => {
       const vestingStart = currentTime.sub(new BN(86400 * 180)); // Started 180 days ago
       const vestingEnd = currentTime.add(new BN(86400 * 180)); // Ends in 180 days (50% through)
 
+      console.log(
+        `\n  Setting up HALF_LOCKED scenario with expected 50% locked...`
+      );
       const { streams, lockedAmounts, investorATAs } =
         await createInvestorStreams(context.banksClient, payer, context, {
           investorCount,
@@ -1427,6 +1430,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         (sum, locked) => sum.add(locked),
         new BN(0)
       );
+      console.log(`  Total locked amount: ${totalLocked.toString()}`);
 
       // Generate fees - larger swap to ensure fee generation
       await swapExactIn(context.banksClient, {
@@ -1514,6 +1518,9 @@ describe("Fee Router - Comprehensive Test Suite", () => {
       const vestingStart = currentTime.sub(new BN(86400 * 30));
       const vestingEnd = currentTime.add(new BN(86400 * 330));
 
+      console.log(
+        `\n  Setting up MIXED_LOCKS scenario with [100, 75, 50, 25, 0]% locked...`
+      );
       const { streams, lockedAmounts, investorATAs } =
         await createInvestorStreams(context.banksClient, payer, context, {
           investorCount,
@@ -1529,6 +1536,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         (sum, locked) => sum.add(locked),
         new BN(0)
       );
+      console.log(`  Total locked amount: ${totalLocked.toString()}`);
 
       // Generate fees - larger swap to ensure fee generation
       await swapExactIn(context.banksClient, {
@@ -1609,6 +1617,9 @@ describe("Fee Router - Comprehensive Test Suite", () => {
       const vestingStart = currentTime.sub(new BN(86400 * 30));
       const vestingEnd = currentTime.add(new BN(86400 * 330));
 
+      console.log(
+        `\n  Setting up MOSTLY_UNLOCKED scenario with expected 20% locked...`
+      );
       const { streams, lockedAmounts, investorATAs } =
         await createInvestorStreams(context.banksClient, payer, context, {
           investorCount,
@@ -1624,6 +1635,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         (sum, locked) => sum.add(locked),
         new BN(0)
       );
+      console.log(`  Total locked amount: ${totalLocked.toString()}`);
 
       // Generate fees - larger swap to ensure fee generation
       await swapExactIn(context.banksClient, {
@@ -2053,8 +2065,8 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         policyParams,
       });
 
-      const investorCount = 6; // Reduced from 10 to 6 to avoid transaction size limit
-      const pageSize = 2; // Adjusted pageSize to evenly divide investorCount
+      const investorCount = 5; // Reduced to fit tx size with compute budget
+      const pageSize = 2; // Adjusted pageSize
       const currentTime = new BN(Math.floor(Date.now() / 1000));
       const vestingStart = currentTime.sub(new BN(86400 * 30));
       const vestingEnd = currentTime.add(new BN(86400 * 330));
@@ -3034,7 +3046,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
 
     it("Should prevent double-payment when re-running same page", async () => {
       // Create investors
-      const investorCount = 6;
+      const investorCount = 5;
       const pageSize = 2;
       const currentTime = new BN(Math.floor(Date.now() / 1000));
       const vestingStart = currentTime.sub(new BN(86400 * 30));

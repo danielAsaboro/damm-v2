@@ -12,11 +12,14 @@ import {
 } from "@solana/spl-token";
 import {
   clusterApiUrl,
+  ComputeBudgetProgram,
   Connection,
   Keypair,
   PublicKey,
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
+  TransactionMessage,
+  VersionedTransaction,
 } from "@solana/web3.js";
 import { BanksClient } from "solana-bankrun";
 import FeeRouterIDL from "../../target/idl/fee_router.json";
@@ -532,8 +535,17 @@ export async function crankDistribution(
     CP_AMM_PROGRAM_ID
   );
 
-  // Build remaining accounts for investors
-  const remainingAccounts = investorAccounts.flatMap((inv) => [
+  // Extract only the accounts for this page (per bounty spec line 28: pagination)
+  // Each page should only include page_size investors, not all investors
+  const startInvestorIdx = pageStart;
+  const endInvestorIdx = Math.min(pageStart + pageSize, investorAccounts.length);
+  const pageInvestorAccounts = investorAccounts.slice(startInvestorIdx, endInvestorIdx);
+
+  // Determine if this is the final page
+  const isFinalPage = endInvestorIdx >= investorAccounts.length;
+
+  // Build remaining accounts for THIS PAGE only
+  const remainingAccounts = pageInvestorAccounts.flatMap((inv) => [
     {
       pubkey: inv.streamAccount,
       isSigner: false,
@@ -546,8 +558,14 @@ export async function crankDistribution(
     },
   ]);
 
+  // Add compute budget instruction for Streamflow SDK calculations
+  // The SDK uses floating-point operations that exceed the default 200K limit
+  const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
+    units: 400_000,
+  });
+
   const transaction = await program.methods
-    .crankDistribution(pageStart, pageSize, totalLockedAllInvestors)
+    .crankDistribution(pageStart, pageSize, totalLockedAllInvestors, isFinalPage)
     .accountsPartial({
       cranker: cranker.publicKey,
       vault,
@@ -572,6 +590,7 @@ export async function crankDistribution(
       tokenProgram,
     })
     .remainingAccounts(remainingAccounts)
+    .preInstructions([computeBudgetIx])
     .transaction();
 
   transaction.recentBlockhash = (await banksClient.getLatestBlockhash())[0];
