@@ -14,6 +14,16 @@ A Solana program that creates and manages an honorary LP position in DAMM v2 (CP
 
 _Figure 1: Complete system architecture showing the flow from CP-AMM pool fee accrual through the honorary position to 24h distribution crank, with Streamflow integration and pro-rata investor payouts._
 
+## 🎥 Video Walkthrough
+
+### System Architecture Overview
+
+[![System Architecture](https://github.com/user-attachments/assets/b11726bd-91eb-46ac-ab94-2796aab390c6)](https://github.com/user-attachments/assets/b11726bd-91eb-46ac-ab94-2796aab390c6)
+
+### Running Tests
+
+[![Running Tests](https://github.com/user-attachments/assets/5609302e-9e6f-4d9d-9ec2-9e2eb8594da6)](https://github.com/user-attachments/assets/5609302e-9e6f-4d9d-9ec2-9e2eb8594da6)
+
 ---
 
 ## 📋 Table of Contents
