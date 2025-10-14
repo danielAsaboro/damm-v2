@@ -92,6 +92,9 @@ pub fn handle_setup_policy(
     progress.total_distributions = 0;
     progress.total_investor_distributed = 0;
     progress.total_creator_distributed = 0;
+    progress.current_day_total_locked_all = 0;
+    progress.persistent_carry_over = 0;
+    progress.paid_investor_bitmap = [0u8; 256]; // Initialize bitmap as all zeros
     
     emit!(PolicySetup {
         vault: ctx.accounts.vault.key(),

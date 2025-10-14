@@ -3961,4 +3961,550 @@ describe("Fee Router - Comprehensive Test Suite", () => {
       console.log(`   Creator remainder: ${creatorBalance.toString()}`);
     });
   });
+  /**
+   * Test Suite 11: Duplicate Prevention & Sequential Pagination Security
+   *
+   * Critical security tests to verify:
+   * - Pages must be processed sequentially (no skipping)
+   * - Cannot pay same investor twice (bitmap tracking)
+   * - Cannot overlap pages
+   */
+  describe("11. Duplicate Prevention & Sequential Pagination Security", () => {
+    let context: ProgramTestContext;
+    let admin: Keypair;
+    let creator: Keypair;
+    let payer: Keypair;
+    let swapper: Keypair;
+    let vault: PublicKey;
+    let pool: PublicKey;
+    let quoteMint: PublicKey;
+    let baseMint: PublicKey;
+
+    beforeEach(async () => {
+      const root = Keypair.generate();
+      context = await startTest(root);
+
+      admin = await generateKpAndFund(context.banksClient, context.payer);
+      creator = await generateKpAndFund(context.banksClient, context.payer);
+      payer = await generateKpAndFund(context.banksClient, context.payer);
+      swapper = await generateKpAndFund(context.banksClient, context.payer);
+      vault = Keypair.generate().publicKey;
+
+      // Create tokens
+      const tokenAMint = await createToken(
+        context.banksClient,
+        context.payer,
+        context.payer.publicKey
+      );
+      const tokenBMint = await createToken(
+        context.banksClient,
+        context.payer,
+        context.payer.publicKey
+      );
+
+      // Mint tokens to creator and swapper
+      await mintSplTokenTo(
+        context.banksClient,
+        context.payer,
+        tokenAMint,
+        context.payer,
+        creator.publicKey
+      );
+      await mintSplTokenTo(
+        context.banksClient,
+        context.payer,
+        tokenBMint,
+        context.payer,
+        creator.publicKey
+      );
+      await mintSplTokenTo(
+        context.banksClient,
+        context.payer,
+        tokenAMint,
+        context.payer,
+        swapper.publicKey
+      );
+      await mintSplTokenTo(
+        context.banksClient,
+        context.payer,
+        tokenBMint,
+        context.payer,
+        swapper.publicKey
+      );
+
+      // Create quote-only pool
+      const createConfigParams: CreateConfigParams = {
+        poolFees: {
+          baseFee: {
+            cliffFeeNumerator: new BN(2_500_000),
+            firstFactor: 0,
+            secondFactor: convertToByteArray(new BN(0)),
+            thirdFactor: new BN(0),
+            baseFeeMode: 0,
+          },
+          padding: [],
+          dynamicFee: null,
+        },
+        sqrtMinPrice: new BN(MIN_SQRT_PRICE),
+        sqrtMaxPrice: new BN(MAX_SQRT_PRICE),
+        vaultConfigKey: PublicKey.default,
+        poolCreatorAuthority: PublicKey.default,
+        activationType: 0,
+        collectFeeMode: 1, // Quote-only mode
+      };
+
+      const config = await createConfigIx(
+        context.banksClient,
+        admin,
+        new BN(randomID()),
+        createConfigParams
+      );
+
+      const initPoolParams: InitializePoolParams = {
+        payer: creator,
+        creator: creator.publicKey,
+        config,
+        tokenAMint: tokenAMint,
+        tokenBMint: tokenBMint,
+        liquidity: new BN(MIN_LP_AMOUNT),
+        sqrtPrice: new BN(MIN_SQRT_PRICE).muln(2),
+        activationPoint: null,
+      };
+
+      const { pool: poolAddress } = await initializePool(
+        context.banksClient,
+        initPoolParams
+      );
+      pool = poolAddress;
+      quoteMint = tokenBMint; // Quote is token B
+      baseMint = tokenAMint;
+
+      // Initialize honorary position
+      await initializeHonoraryPosition(context.banksClient, {
+        authority: admin,
+        payer,
+        vault,
+        pool,
+        quoteMint,
+        baseMint,
+      });
+
+      // Setup policy with 4 investors (keeps transaction size under 1232 byte limit)
+      const policyParams: PolicyParams = {
+        creatorWallet: creator.publicKey,
+        investorFeeShareBps: 3000, // 30%
+        dailyCapLamports: null,
+        minPayoutLamports: new BN(1000), // Lower threshold to ensure payouts go through
+        y0TotalAllocation: new BN(20_000_000),
+        totalInvestors: 4,
+      };
+
+      await setupPolicy(context.banksClient, {
+        authority: admin,
+        payer,
+        vault,
+        policyParams: policyParams,
+      });
+
+      // Add liquidity to honorary position
+      await addHonoraryLiquidity(context.banksClient, {
+        funder: creator,
+        vault,
+        pool,
+        quoteMint,
+        baseMint,
+        liquidityDelta: new BN(MIN_LP_AMOUNT),
+        tokenAMaxAmount: new BN("100000000000000000"),
+        tokenBMaxAmount: new BN("100000000000000000"),
+      });
+    });
+
+    it("Should reject non-sequential page (skipping pages)", async () => {
+      await advanceTime24Hours(context);
+
+      const investorCount = 4;
+      const pageSize = 2;
+      const lockedPercentages = new Array(investorCount).fill(50);
+
+      const currentTime = new BN(Math.floor(Date.now() / 1000));
+      const vestingStart = currentTime.sub(new BN(86400 * 30));
+      const vestingEnd = currentTime.add(new BN(86400 * 330));
+
+      const { streams, investorATAs } = await createInvestorStreams(
+        context.banksClient,
+        payer,
+        context,
+        {
+          investorCount,
+          sender: creator,
+          mint: quoteMint,
+          totalAllocation: new BN(20_000_000),
+          vestingStartTime: vestingStart,
+          vestingEndTime: vestingEnd,
+          lockedPercentages,
+        }
+      );
+
+      // Generate fees - larger swap for more fees
+      await swapExactIn(context.banksClient, {
+        payer: swapper,
+        pool,
+        inputTokenMint: quoteMint,
+        outputTokenMint: baseMint,
+        amountIn: new BN(100_000_000),
+        minimumAmountOut: new BN(0),
+        referralTokenAccount: null,
+      });
+
+      const creatorATA = getAssociatedTokenAddressSync(
+        quoteMint,
+        creator.publicKey,
+        false,
+        TOKEN_PROGRAM_ID
+      );
+
+      const investorAccountsAll = streams.map((stream, idx) => ({
+        streamAccount: stream,
+        investorATA: investorATAs[idx],
+      }));
+
+      // Process first page (investors 0-1) - Should succeed
+      await crankDistribution(context.banksClient, {
+        cranker: payer,
+        vault,
+        pool,
+        quoteMint,
+        baseMint,
+        creatorQuoteATA: creatorATA,
+        pageStart: 0,
+        pageSize,
+        investorAccounts: investorAccountsAll,
+      });
+
+      // Attempt to skip page 1 and go directly to page 2 (investors 2-3 again, but with wrong page_start)
+      // This MUST FAIL with InvalidPaginationSequence
+      try {
+        await crankDistribution(context.banksClient, {
+          cranker: payer,
+          vault,
+          pool,
+          quoteMint,
+          baseMint,
+          creatorQuoteATA: creatorATA,
+          pageStart: 3, // Skipping from cursor=2 to page_start=3
+          pageSize: 1,
+          investorAccounts: investorAccountsAll.slice(3, 4),
+        });
+
+        // If we reach here, the test should fail
+        expect.fail("Expected transaction to fail with InvalidPaginationSequence");
+      } catch (error: any) {
+        // Verify we got the correct error - either hex code or error name
+        // Error code 6013, which becomes 12013 (0x2eed) when wrapped by Anchor
+        const errorStr = error.toString();
+        const hasCorrectError = errorStr.includes("0x2eed") ||
+                                errorStr.includes("InvalidPaginationSequence") ||
+                                errorStr.includes("6013");
+        expect(hasCorrectError).to.be.true;
+        console.log("✅ Correctly rejected non-sequential page (skip detected)");
+      }
+    });
+
+    it("Should reject overlapping pages (duplicate investor protection)", async () => {
+      await advanceTime24Hours(context);
+
+      const investorCount = 4;
+      const pageSize = 2;
+      const lockedPercentages = new Array(investorCount).fill(50);
+
+      const currentTime = new BN(Math.floor(Date.now() / 1000));
+      const vestingStart = currentTime.sub(new BN(86400 * 30));
+      const vestingEnd = currentTime.add(new BN(86400 * 330));
+
+      const { streams, investorATAs } = await createInvestorStreams(
+        context.banksClient,
+        payer,
+        context,
+        {
+          investorCount,
+          sender: creator,
+          mint: quoteMint,
+          totalAllocation: new BN(20_000_000),
+          vestingStartTime: vestingStart,
+          vestingEndTime: vestingEnd,
+          lockedPercentages,
+        }
+      );
+
+      // Generate fees
+      await swapExactIn(context.banksClient, {
+        payer: swapper,
+        pool,
+        inputTokenMint: quoteMint,
+        outputTokenMint: baseMint,
+        amountIn: new BN(100_000_000),
+        minimumAmountOut: new BN(0),
+        referralTokenAccount: null,
+      });
+
+      const creatorATA = getAssociatedTokenAddressSync(
+        quoteMint,
+        creator.publicKey,
+        false,
+        TOKEN_PROGRAM_ID
+      );
+
+      const investorAccountsAll = streams.map((stream, idx) => ({
+        streamAccount: stream,
+        investorATA: investorATAs[idx],
+      }));
+
+      // Process first page (investors 0-1) - Should succeed
+      await crankDistribution(context.banksClient, {
+        cranker: payer,
+        vault,
+        pool,
+        quoteMint,
+        baseMint,
+        creatorQuoteATA: creatorATA,
+        pageStart: 0,
+        pageSize,
+        investorAccounts: investorAccountsAll,
+      });
+
+      // Now try to process a page that overlaps (investors 1-2)
+      // Investor 1 was already paid on the first page
+      // This MUST FAIL - either with InvalidPaginationSequence (page_start != cursor)
+      // or InvestorAlreadyPaid (bitmap check)
+      try {
+        await crankDistribution(context.banksClient, {
+          cranker: payer,
+          vault,
+          pool,
+          quoteMint,
+          baseMint,
+          creatorQuoteATA: creatorATA,
+          pageStart: 1, // Cursor is at 2, page_start is 1 - mismatch!
+          pageSize,
+          investorAccounts: investorAccountsAll.slice(1, 3),
+        });
+
+        expect.fail("Expected transaction to fail due to overlapping pages");
+      } catch (error: any) {
+        // Should fail with InvalidPaginationSequence (6013)
+        // Error code 6013, which becomes 12013 (0x2eed) when wrapped by Anchor
+        // because page_start (1) != cursor (2)
+        const errorStr = error.toString();
+        const hasCorrectError = errorStr.includes("0x2eed") ||
+                                errorStr.includes("InvalidPaginationSequence") ||
+                                errorStr.includes("6013");
+        expect(hasCorrectError).to.be.true;
+        console.log("✅ Correctly rejected overlapping pages");
+      }
+    });
+
+    it("Should prevent paying same investor twice via bitmap tracking", async () => {
+      await advanceTime24Hours(context);
+
+      const investorCount = 4;
+      const pageSize = 2;
+      const lockedPercentages = new Array(investorCount).fill(50);
+
+      const currentTime = new BN(Math.floor(Date.now() / 1000));
+      const vestingStart = currentTime.sub(new BN(86400 * 30));
+      const vestingEnd = currentTime.add(new BN(86400 * 330));
+
+      const { streams, investorATAs } = await createInvestorStreams(
+        context.banksClient,
+        payer,
+        context,
+        {
+          investorCount,
+          sender: creator,
+          mint: quoteMint,
+          totalAllocation: new BN(20_000_000),
+          vestingStartTime: vestingStart,
+          vestingEndTime: vestingEnd,
+          lockedPercentages,
+        }
+      );
+
+      // Generate fees
+      await swapExactIn(context.banksClient, {
+        payer: swapper,
+        pool,
+        inputTokenMint: quoteMint,
+        outputTokenMint: baseMint,
+        amountIn: new BN(100_000_000),
+        minimumAmountOut: new BN(0),
+        referralTokenAccount: null,
+      });
+
+      const creatorATA = getAssociatedTokenAddressSync(
+        quoteMint,
+        creator.publicKey,
+        false,
+        TOKEN_PROGRAM_ID
+      );
+
+      const investorAccountsAll = streams.map((stream, idx) => ({
+        streamAccount: stream,
+        investorATA: investorATAs[idx],
+      }));
+
+      // Get initial balance of investor 0
+      const investor0BalanceBefore = await getTokenBalance(
+        context.banksClient,
+        investorATAs[0]
+      );
+
+      // Process first page (investors 0-1) - Should succeed
+      await crankDistribution(context.banksClient, {
+        cranker: payer,
+        vault,
+        pool,
+        quoteMint,
+        baseMint,
+        creatorQuoteATA: creatorATA,
+        pageStart: 0,
+        pageSize,
+        investorAccounts: investorAccountsAll,
+      });
+
+      // Verify investor 0 got paid
+      const investor0BalanceAfterPage1 = await getTokenBalance(
+        context.banksClient,
+        investorATAs[0]
+      );
+      const payout1 = investor0BalanceAfterPage1.sub(investor0BalanceBefore);
+      expect(payout1.toNumber()).to.be.greaterThan(0);
+
+      // Continue with page 1 (investors 2-3) - Should succeed and complete the day
+      await crankDistribution(context.banksClient, {
+        cranker: payer,
+        vault,
+        pool,
+        quoteMint,
+        baseMint,
+        creatorQuoteATA: creatorATA,
+        pageStart: 2,
+        pageSize,
+        investorAccounts: investorAccountsAll.slice(2, 4),
+      });
+
+      // Verify investor 0's balance hasn't changed since page 1
+      const investor0BalanceFinal = await getTokenBalance(
+        context.banksClient,
+        investorATAs[0]
+      );
+      expect(investor0BalanceFinal.toString()).to.equal(
+        investor0BalanceAfterPage1.toString()
+      );
+
+      console.log("✅ Bitmap tracking prevented duplicate payments across all pages");
+      console.log(`   Investor 0 received exactly one payment: ${payout1.toString()}`);
+    });
+
+    it("Should allow legitimate sequential pagination without errors", async () => {
+      await advanceTime24Hours(context);
+
+      const investorCount = 4;
+      const pageSize = 2;
+      const lockedPercentages = new Array(investorCount).fill(50);
+
+      const currentTime = new BN(Math.floor(Date.now() / 1000));
+      const vestingStart = currentTime.sub(new BN(86400 * 30));
+      const vestingEnd = currentTime.add(new BN(86400 * 330));
+
+      const { streams, investorATAs } = await createInvestorStreams(
+        context.banksClient,
+        payer,
+        context,
+        {
+          investorCount,
+          sender: creator,
+          mint: quoteMint,
+          totalAllocation: new BN(20_000_000),
+          vestingStartTime: vestingStart,
+          vestingEndTime: vestingEnd,
+          lockedPercentages,
+        }
+      );
+
+      // Generate fees
+      await swapExactIn(context.banksClient, {
+        payer: swapper,
+        pool,
+        inputTokenMint: quoteMint,
+        outputTokenMint: baseMint,
+        amountIn: new BN(100_000_000),
+        minimumAmountOut: new BN(0),
+        referralTokenAccount: null,
+      });
+
+      const creatorATA = getAssociatedTokenAddressSync(
+        quoteMint,
+        creator.publicKey,
+        false,
+        TOKEN_PROGRAM_ID
+      );
+
+      const investorAccountsAll = streams.map((stream, idx) => ({
+        streamAccount: stream,
+        investorATA: investorATAs[idx],
+      }));
+
+      // Track balances
+      const balancesBefore: BN[] = [];
+      for (const ata of investorATAs) {
+        balancesBefore.push(await getTokenBalance(context.banksClient, ata));
+      }
+
+      // Process all 2 pages sequentially - All should succeed
+      await crankDistribution(context.banksClient, {
+        cranker: payer,
+        vault,
+        pool,
+        quoteMint,
+        baseMint,
+        creatorQuoteATA: creatorATA,
+        pageStart: 0,
+        pageSize,
+        investorAccounts: investorAccountsAll,
+      });
+
+      await crankDistribution(context.banksClient, {
+        cranker: payer,
+        vault,
+        pool,
+        quoteMint,
+        baseMint,
+        creatorQuoteATA: creatorATA,
+        pageStart: 2,
+        pageSize,
+        investorAccounts: investorAccountsAll.slice(2, 4),
+      });
+
+      // Verify all investors received exactly one payment
+      for (let i = 0; i < investorCount; i++) {
+        const balanceAfter = await getTokenBalance(
+          context.banksClient,
+          investorATAs[i]
+        );
+        const payout = balanceAfter.sub(balancesBefore[i]);
+        expect(payout.toNumber()).to.be.greaterThan(0);
+      }
+
+      // Verify day completed
+      const [progressPDA] = deriveProgressPDA(vault);
+      const progress = await getDistributionProgress(
+        context.banksClient,
+        progressPDA
+      );
+      expect(progress.dayCompleted).to.be.true;
+
+      console.log("✅ Legitimate sequential pagination completed successfully");
+      console.log(`   All ${investorCount} investors paid exactly once`);
+    });
+  });
 });

@@ -12,7 +12,7 @@ A Solana program that creates and manages an honorary LP position in DAMM v2 (CP
 - Tests ✅
 - Documentation ✅
 - 🚫 **No Mocks**: Pulled real Streamflow mainnet program binary
-- ✅ **89 Passing, 2 Pending** (2 alpha vault tests skipped)
+- ✅ **93 Passing, 2 Pending** (2 alpha vault tests skipped)
 
 - **Program ID**: `5B57SJ3g2YoNXUpsZqqjEQkRSxyKtVTQRXdgAirz6bio`
 - **CP-AMM Program**: `ASmKWt93JEMHxbdE6j7znD9y2FcdPboCzC3xtSTJvN7S` (localnet)
@@ -43,14 +43,15 @@ A Solana program that creates and manages an honorary LP position in DAMM v2 (CP
 
 ### ✅ 3. End-to-End Tests
 
-- **Total Tests**: 89 passing, 2 pending (2 alpha vault tests intentionally skipped)
+- **Total Tests**: 93 passing, 2 pending (2 alpha vault tests intentionally skipped)
 - **Test Files**:
-  - `tests/feeRouter.test.ts` - 29 fee router integration tests (including 2 ALT scalability tests)
+  - `tests/feeRouter.test.ts` - 33 fee router integration tests (including 2 ALT + 4 pagination security tests)
   - `tests/*.test.ts` - 60 CP-AMM underlying tests
 - **Against CP-AMM**: Real forked Meteora DLMM v2 program
 - **Against Streamflow**: **Real mainnet program binary** (`strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m`) - NO MOCKS!
 - **Test Environment**: solana-bankrun (local validator simulation)
 - **Demonstrates**: Complete flows from pool creation → position init → fee accrual → distribution
+- **Security Tests**: Pagination validation, duplicate prevention, sequential enforcement, idempotent retries
 - **Scalability Tests**: Address Lookup Table integration tested with 25+ investors per transaction
 
 ### ✅ 4. Comprehensive README.md
@@ -738,6 +739,54 @@ Page N: crank_distribution(N*page_size, remaining, PAGE_N)  → Processes final 
 - **Creator payment**: Only occurs on final page after all investors paid
 - **Dust handling**: Remainders from floor division carried in progress state
 - **Consistent denominator**: Uses stored `total_locked_all_investors` from page 0 across all pages
+
+#### Pagination Security & Validation
+
+The system enforces strict pagination security to prevent manipulation and double-payments:
+
+**Sequential Enforcement:**
+- Pages MUST be processed in exact sequential order: `page_start` must equal `pagination_cursor`
+- **Rejected**: Skipping pages (e.g., 0 → 50 → 100 ✗, then trying 25)
+- **Rejected**: Backward pagination (e.g., after page 50, calling page 25)
+- **Error**: `InvalidPaginationSequence` (6013, hex 0x177D, appears as 0x2EED when Anchor-wrapped)
+
+**Idempotent Retry Support:**
+- **Allowed**: Re-running the previous page for fault tolerance
+- Example: After successfully processing page 50-99, you can retry page 50 (it returns early without re-processing)
+- The cursor at 100 detects page_start=50 as previous page retry (50 = 100 - 50) and returns `Ok(())` immediately
+
+**Bitmap Duplicate Prevention:**
+- 256-byte bitmap tracks up to 2,048 investors (each bit = 1 investor)
+- Before each payment, checks `is_investor_paid(investor_index)` via bitmap
+- If investor already paid today: fails with `InvestorAlreadyPaid` (6014, hex 0x177E)
+- Bitmap resets automatically when starting new day (`day_completed = true`)
+
+**Attack Surface Mitigation:**
+```
+Scenario 1 - Skipping investors:
+  Page 0 (0-49) ✓ → cursor = 50
+  Page 2 (100-149) ✗ → InvalidPaginationSequence (100 != 50)
+
+Scenario 2 - Overlapping for double-payment:
+  Page 0 (0-49) ✓ → cursor = 50
+  Page 0 again (0-49) ✗ → Idempotent retry (no-op, returns Ok)
+  Page 1 with duplicate investor 25 ✗ → InvestorAlreadyPaid (bitmap check)
+
+Scenario 3 - Normal flow:
+  Page 0 (0-49) ✓ → cursor = 50, bitmap marks 0-49 paid
+  Page 1 (50-99) ✓ → cursor = 100, bitmap marks 50-99 paid
+  Page 2 (100-120, final) ✓ → day_completed = true, bitmap reset on next day
+```
+
+**State Transitions:**
+```
+crank_distribution.rs:166-198
+├─ Check if first page of new day OR continuation
+├─ Calculate previous_page_start for retry detection
+├─ If is_retry_previous_page → return Ok() early (no-op)
+├─ If !is_first_page → require!(page_start == cursor) ← SECURITY CHECK
+└─ Process investors with bitmap duplicate checks
+```
 
 #### Daily Cap Behavior
 
@@ -1985,6 +2034,10 @@ pub struct CreatorPayoutDayClosed {
 | 6008 | 0x1778 | **AccountCountMismatch** | Wrong number of remaining_accounts | Odd number of accounts (not stream+ATA pairs) | Provide accounts in pairs: [stream, ATA, stream, ATA, ...] |
 | 6009 | 0x1779 | **DailyCapExceeded** | Daily distribution cap reached | More fees than daily_cap_lamports | Normal operation, excess carried to next day |
 | 6010 | 0x177A | **InvalidPositionOwnership** | Position not owned by correct PDA | Position owner mismatch | Verify position owned by InvestorFeePositionOwnerPda |
+| 6011 | 0x177B | **PageAlreadyProcessed** | Attempted to replay page during active distribution | Page already completed in same day | Use sequential pagination, don't replay old pages |
+| 6012 | 0x177C | **InvalidTotalLockedAmount** | Supplied total doesn't match on-chain calculation | User-supplied total incorrect | Remove - system calculates total on-chain |
+| 6013 | 0x177D (0x2EED) | **InvalidPaginationSequence** | Pages not processed sequentially | Skipped pages or backward pagination | Process pages in order: page_start must equal cursor |
+| 6014 | 0x177E | **InvestorAlreadyPaid** | Investor already received payment today | Duplicate investor in page or bitmap conflict | Check investor not already processed |
 
 ### Error Code Reference (Rust)
 
@@ -2002,6 +2055,10 @@ pub enum HonouraryError {
     AccountCountMismatch = 6008,
     DailyCapExceeded = 6009,
     InvalidPositionOwnership = 6010,
+    PageAlreadyProcessed = 6011,
+    InvalidTotalLockedAmount = 6012,
+    InvalidPaginationSequence = 6013,
+    InvestorAlreadyPaid = 6014,
 }
 ```
 
@@ -2039,7 +2096,7 @@ pub enum HonouraryError {
 - ✅ **Dust Handling**: Carries remainder forward within day
 - ✅ **Daily Caps**: Enforces `daily_cap_lamports` from policy
 - ✅ **Min Payout**: Enforces `min_payout_lamports` threshold
-- ✅ **Tests**: 27 tests covering full distribution flows
+- ✅ **Tests**: 31 tests covering full distribution flows (including pagination security)
 
 ### Testing
 
@@ -2052,8 +2109,13 @@ pub enum HonouraryError {
   - ✅ Dust carry-over
   - ✅ Cap enforcement
   - ✅ Base fee rejection (deterministic failure with no distribution)
+- ✅ **Security Tests**:
+  - ✅ Non-sequential page rejection (skipping pages)
+  - ✅ Overlapping page rejection (backward pagination)
+  - ✅ Duplicate payment prevention (bitmap validation)
+  - ✅ Idempotent retry support (fault tolerance)
 - ✅ **60 CP-AMM Tests**: Validates underlying pool functionality
-- ✅ **29 Fee Router Tests**: Validates honorary position & distribution logic (including 2 ALT scalability tests)
+- ✅ **33 Fee Router Tests**: Validates honorary position & distribution logic (including 2 ALT + 4 pagination security tests)
 
 ### Quality Requirements
 
@@ -2061,7 +2123,7 @@ pub enum HonouraryError {
 - ✅ **No Unsafe**: Zero `unsafe` blocks in codebase
 - ✅ **Deterministic Seeds**: All PDAs use predictable seeds
 - ✅ **Event Emissions**: 4 event types cover all state transitions
-- ✅ **Clear Errors**: 11 custom error codes with descriptive messages
+- ✅ **Clear Errors**: 15 custom error codes with descriptive messages
 - ✅ **Documentation**: Inline comments + this comprehensive README
 
 ---
@@ -2202,14 +2264,18 @@ pub const STREAMFLOW_PROGRAM_ID: Pubkey = pubkey!("strmRqUCoQUgGUan5YhzUZa6Kqdzw
 | **Missing investor ATA**          | Page fails with account error                               | Create missing ATA, retry same page                                       |
 | **Network timeout mid-page**      | Page may partially fail                                     | Retry same page (idempotent, safe)                                        |
 | **Daily cap reached**             | Remaining payouts carried to next day                       | Normal operation, crank again after 24h                                   |
-| **Wrong pagination order**        | May skip investors or duplicate                             | Always process pages sequentially (0, 50, 100...)                         |
+| **Non-sequential page (skipping)** | Fails with `InvalidPaginationSequence` (0x2EED)            | Process pages in order - `page_start` must equal `pagination_cursor`     |
+| **Overlapping page attempt**       | Fails with `InvalidPaginationSequence` (0x2EED)            | Don't replay old pages; use sequential order only                         |
+| **Duplicate investor payment**     | Fails with `InvestorAlreadyPaid` (0x177E)                  | Bitmap prevents same investor receiving payment twice per day             |
+| **Idempotent retry (previous page)** | Returns success without re-processing                    | Safe to retry previous page if needed for fault tolerance                 |
 | **Incorrect remaining_accounts**  | First page fails or calculates wrong total                  | First page MUST include ALL investors; subsequent pages only current page |
 | **Transaction too large**         | First page fails with size limit error                      | Reduce total investors or use smaller batches (tested: 5 investors works) |
 
-**Idempotency Guarantees:**
+**Idempotency & Security Guarantees:**
 
-- ✅ Re-running the same page with same parameters is always safe
-- ✅ Progress tracking ensures no double-payments
+- ✅ Re-running the previous page is always safe (returns early, no-op)
+- ✅ Bitmap tracking prevents any investor from being paid twice per day
+- ✅ Sequential validation ensures pages cannot be skipped or overlapped
 - ✅ Creator payout only occurs on truly final page
 
 ---
@@ -2300,6 +2366,8 @@ A: First page needs ALL investor accounts for total calculation. Solutions:
 | 0x1773 | InvalidPagination | Use `page_size ≤ 50` |
 | 0x1774 | InsufficientStreamflowData | Verify Streamflow account validity |
 | 0x1775 | InvalidAdmin (CP-AMM) | Build with `--features local` |
+| 0x2EED (0x177D) | InvalidPaginationSequence | Process pages sequentially - `page_start` must equal cursor |
+| 0x177E | InvestorAlreadyPaid | Investor already paid today (bitmap check failed) |
 
 ---
 

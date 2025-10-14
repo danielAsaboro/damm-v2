@@ -162,16 +162,44 @@ pub fn handle_crank_distribution<'info>(
         can_dist, progress.day_completed, current_time >= progress.last_distribution_ts + 86400);
     require!(can_dist, HonouraryError::CrankWindowNotReached);
 
-    // Enforce idempotent behavior: if page already processed, return early (no-op)
-    // This allows safe retries without double-payment
-    // Only allow backward pagination when starting a new day (day_completed=true)
-    if !progress.day_completed && page_start < progress.pagination_cursor {
-        // Page already processed - return success without doing anything
-        // This prevents double-payment while allowing retry logic to work smoothly
-        return Ok(());
-    }
+    // Determine if this is the first page of a new day
+    let is_first_page = (page_start == 0 && progress.day_completed) ||
+                       (page_start == 0 && progress.pagination_cursor == 0);
 
-    let is_first_page = page_start == 0 || progress.day_completed;
+    // Calculate the previous page start for idempotent retry detection
+    let previous_page_start = if progress.pagination_cursor >= page_size {
+        progress.pagination_cursor - page_size
+    } else {
+        0
+    };
+
+    // Detect if this is an idempotent retry of the previous page
+    let is_retry_previous_page = !progress.day_completed &&
+                                  page_start == previous_page_start &&
+                                  page_start < progress.pagination_cursor;
+
+    // CRITICAL SECURITY: Enforce strict sequential pagination
+    // Allow only:
+    // 1. First page of new day (page_start == 0 && day_completed)
+    // 2. Sequential continuation (page_start == cursor)
+    // 3. Idempotent retry of previous page (for fault tolerance)
+    // Reject:
+    // - Overlapping pages (backward pagination that's not a retry)
+    // - Skipping pages (forward jumps)
+    if is_retry_previous_page {
+        // Idempotent retry - the bitmap will prevent double-payment
+        // Return early without doing anything (no-op)
+        msg!("Idempotent retry detected: page_start={} matches previous page", page_start);
+        return Ok(());
+    } else if !is_first_page {
+        // Not first page and not a retry - must be sequential
+        require!(
+            page_start == progress.pagination_cursor,
+            HonouraryError::InvalidPaginationSequence
+        );
+        msg!("Sequential validation passed: page_start={} matches cursor={}",
+            page_start, progress.pagination_cursor);
+    }
 
     // Save the day_completed state BEFORE we modify it
     // We need this to determine if we're starting a new day (and thus need to process only page_size investors)
@@ -336,6 +364,17 @@ pub fn handle_crank_distribution<'info>(
         let _stream_account = &ctx.remaining_accounts[i];
         let investor_ata = &ctx.remaining_accounts[i + 1];
 
+        // Calculate global investor index for bitmap tracking
+        let investor_global_index = page_start.checked_add(idx as u32)
+            .ok_or(HonouraryError::MathOverflow)?;
+
+        // CRITICAL SECURITY: Check if this investor has already been paid today
+        // This prevents duplicate payments across different pages
+        require!(
+            !progress.is_investor_paid(investor_global_index),
+            HonouraryError::InvestorAlreadyPaid
+        );
+
         // Calculate individual payout using TOTAL locked across all investors
         let individual_payout = calculate_individual_payout(
             total_investor_fee,
@@ -388,6 +427,9 @@ pub fn handle_crank_distribution<'info>(
                 progress.current_day_distributed =
                     progress.current_day_distributed.saturating_add(allowed_payout);
                 page_distributed = page_distributed.saturating_add(allowed_payout);
+
+                // Mark investor as paid in bitmap to prevent duplicate payments
+                progress.mark_investor_paid(investor_global_index)?;
             }
 
             // Accumulate dust from cap-limited payouts

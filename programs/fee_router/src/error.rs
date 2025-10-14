@@ -40,4 +40,10 @@ pub enum HonouraryError {
 
     #[msg("Invalid total_locked_all_investors - does not match actual locked amounts")]
     InvalidTotalLockedAmount = 6012,
+
+    #[msg("Invalid pagination sequence - pages must be processed sequentially starting at cursor")]
+    InvalidPaginationSequence = 6013,
+
+    #[msg("Investor already paid in this distribution day - duplicate payment prevented")]
+    InvestorAlreadyPaid = 6014,
 }
