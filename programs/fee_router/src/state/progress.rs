@@ -5,39 +5,42 @@ use anchor_lang::prelude::*;
 pub struct DistributionProgress {
     /// The vault this progress tracking applies to
     pub vault: Pubkey,
-    
+
     /// Timestamp of last distribution start
     pub last_distribution_ts: i64,
-    
+
     /// Amount distributed in current day (lamports)
     pub current_day_distributed: u64,
-    
+
     /// Carry-over dust from previous pages/days
     pub current_day_carry_over: u64,
-    
+
     /// Current pagination cursor (investor index)
     pub pagination_cursor: u32,
-    
+
     /// Whether current day distribution is completed
     pub day_completed: bool,
-    
+
     /// Current day total claimed fees
     pub current_day_total_claimed: u64,
-    
+
     /// PDA bump seed
     pub bump: u8,
-    
+
     /// Total distributions completed
     pub total_distributions: u64,
-    
+
     /// Total lifetime distributed to investors
     pub total_investor_distributed: u64,
-    
+
     /// Total lifetime distributed to creator
     pub total_creator_distributed: u64,
 
     /// Total locked amount across ALL investors for current day (calculated once on first page)
     pub current_day_total_locked_all: u64,
+
+    /// Persistent dust carried from previous day (added to next day's claimable pool)
+    pub persistent_carry_over: u64,
 }
 
 impl DistributionProgress {
@@ -68,8 +71,14 @@ impl DistributionProgress {
         self.current_day_carry_over = 0;
         self.pagination_cursor = 0;
         self.day_completed = false;
-        self.current_day_total_claimed = total_claimed;
+
+        // Add persistent carry-over (dust from previous day) to today's claimable pool
+        // This ensures dust gets redistributed instead of being lost
+        self.current_day_total_claimed = total_claimed.saturating_add(self.persistent_carry_over);
         self.current_day_total_locked_all = total_locked_all;
+
+        // Reset persistent carry-over now that it's been added to the pool
+        self.persistent_carry_over = 0;
     }
     
     /// Complete current day
@@ -78,5 +87,8 @@ impl DistributionProgress {
         self.total_distributions += 1;
         self.total_creator_distributed += creator_amount;
         self.pagination_cursor = 0;
+
+        // Persist current day's dust to carry forward to next day
+        self.persistent_carry_over = self.current_day_carry_over;
     }
 }

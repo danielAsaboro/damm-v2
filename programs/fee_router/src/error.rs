@@ -34,4 +34,7 @@ pub enum HonouraryError {
 
     #[msg("Position not owned by program PDA")]
     InvalidPositionOwnership = 6010,
+
+    #[msg("Page already processed - cannot replay pages during active distribution")]
+    PageAlreadyProcessed = 6011,
 }

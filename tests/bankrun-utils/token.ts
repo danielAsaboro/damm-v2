@@ -24,7 +24,9 @@ import {
 import BN from "bn.js";
 import { BanksClient } from "solana-bankrun";
 import { DECIMALS } from "./constants";
-const rawAmount = 100_000_000 * 10 ** DECIMALS; // 1 millions
+// Use bigint to avoid precision loss for large mint amounts; avoid Math.pow/`**` to prevent downleveling issues
+const TEN_TO_DECIMALS: bigint = BigInt("1" + "0".repeat(DECIMALS));
+const RAW_MINT_AMOUNT: bigint = BigInt(1_000_000_000) * TEN_TO_DECIMALS; // 1e9 * 10^decimals
 
 export async function getOrCreateAssociatedTokenAccount(
   banksClient: BanksClient,
@@ -34,7 +36,12 @@ export async function getOrCreateAssociatedTokenAccount(
   tokenProgram = TOKEN_PROGRAM_ID,
   allowOwnerOffCurve = false // Set to true only for PDA owners
 ) {
-  const ataKey = getAssociatedTokenAddressSync(mint, owner, allowOwnerOffCurve, tokenProgram);
+  const ataKey = getAssociatedTokenAddressSync(
+    mint,
+    owner,
+    allowOwnerOffCurve,
+    tokenProgram
+  );
 
   const account = await banksClient.getAccount(ataKey);
   if (account === null) {
@@ -162,7 +169,7 @@ export async function mintSplTokenTo(
     mint,
     destination,
     mintAuthority.publicKey,
-    rawAmount
+    RAW_MINT_AMOUNT
   );
 
   let transaction = new Transaction();

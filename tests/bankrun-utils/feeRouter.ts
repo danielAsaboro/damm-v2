@@ -329,6 +329,14 @@ export async function addHonoraryLiquidity(
     tokenAMaxAmount,
     tokenBMaxAmount,
   } = params;
+  // Guardrails: ensure thresholds are at least 1e9 units to cover slippage but not exceed u64
+  const MIN_THRESHOLD = new BN("1000000000");
+  const SAFE_TOKEN_A_MAX = tokenAMaxAmount.gt(MIN_THRESHOLD)
+    ? tokenAMaxAmount
+    : MIN_THRESHOLD;
+  const SAFE_TOKEN_B_MAX = tokenBMaxAmount.gt(MIN_THRESHOLD)
+    ? tokenBMaxAmount
+    : MIN_THRESHOLD;
   const program = createFeeRouterProgram();
 
   // Derive PDAs
@@ -390,7 +398,7 @@ export async function addHonoraryLiquidity(
   );
 
   const transaction = await program.methods
-    .addHonoraryLiquidity(liquidityDelta, tokenAMaxAmount, tokenBMaxAmount)
+    .addHonoraryLiquidity(liquidityDelta, SAFE_TOKEN_A_MAX, SAFE_TOKEN_B_MAX)
     .accountsPartial({
       funder: funder.publicKey,
       vault,

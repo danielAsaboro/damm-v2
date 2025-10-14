@@ -24,7 +24,10 @@ import { DECIMALS } from "./constants";
 import { getOrCreateAssociatedTokenAccount } from "./token";
 import { TRANSFER_HOOK_COUNTER_PROGRAM_ID } from "./transferHook";
 import { processTransactionMaybeThrow } from "./common";
-const rawAmount = 1_000_000_000 * 10 ** DECIMALS; // 1 millions
+// Use bigint to avoid precision loss for large mint amounts; avoid exponent operator for compatibility
+const TEN_TO_DECIMALS_2022: bigint = BigInt("1" + "0".repeat(DECIMALS));
+const RAW_MINT_AMOUNT_2022: bigint =
+  BigInt(1_000_000_000) * TEN_TO_DECIMALS_2022;
 
 interface ExtensionWithInstruction {
   extension: ExtensionType;
@@ -139,7 +142,7 @@ export async function mintToToken2022(
     mint,
     destination,
     mintAuthority.publicKey,
-    rawAmount,
+    RAW_MINT_AMOUNT_2022,
     [],
     TOKEN_2022_PROGRAM_ID
   );

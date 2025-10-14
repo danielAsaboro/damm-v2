@@ -147,6 +147,15 @@ pub fn handle_crank_distribution<'info>(
     // Check if we can distribute (24-hour window or continuing same day)
     require!(progress.can_distribute(current_time), HonouraryError::CrankWindowNotReached);
 
+    // Enforce idempotent behavior: if page already processed, return early (no-op)
+    // This allows safe retries without double-payment
+    // Only allow backward pagination when starting a new day (day_completed=true)
+    if !progress.day_completed && page_start < progress.pagination_cursor {
+        // Page already processed - return success without doing anything
+        // This prevents double-payment while allowing retry logic to work smoothly
+        return Ok(());
+    }
+
     let is_first_page = page_start == 0 || progress.day_completed;
 
     // If first page of new day, claim fees and store TOTAL locked across ALL investors
@@ -154,8 +163,8 @@ pub fn handle_crank_distribution<'info>(
     // by summing locked amounts from ALL investor Streamflow accounts, not just the current page.
     // This is critical for pro-rata distribution to work correctly across multiple pages.
     let claimed_quote = if is_first_page && progress.day_completed {
-        // Validate that total_locked is provided (must be > 0 if investors exist)
-        require!(total_locked_all_investors > 0, HonouraryError::MathOverflow);
+        // Note: total_locked_all_investors can be 0 if all tokens are fully unlocked
+        // In this case, all fees go to creator (handled by calculation logic)
 
         // Claim fees from honorary position
         let vault_key = ctx.accounts.vault.key();
@@ -238,6 +247,30 @@ pub fn handle_crank_distribution<'info>(
     let mut page_distributed = 0u64;
     let mut page_dust = 0u64;
 
+    // CRITICAL FIX: Handle accumulated dust from previous pages within the same day
+    // Bounty spec line 99: "carry dust to later pages/day"
+    // If accumulated dust exceeds the minimum payout threshold, distribute it pro-rata to this page
+    let carry_over_from_previous_pages = progress.current_day_carry_over;
+    let mut carry_over_distributed = 0u64;
+
+    if carry_over_from_previous_pages >= policy.min_payout_lamports {
+        // Distribute accumulated dust pro-rata to investors on this page
+        // Calculate this page's share of total locked
+        let page_locked: u64 = individual_locked.iter().sum();
+
+        if total_locked_all_investors > 0 {
+            let page_share = (carry_over_from_previous_pages as u128)
+                .saturating_mul(page_locked as u128)
+                .saturating_div(total_locked_all_investors as u128) as u64;
+
+            carry_over_distributed = page_share;
+            // This will be added to page_distributed after investor distributions
+        }
+    }
+
+    // Reset carry_over - we'll set it to new dust at the end
+    progress.current_day_carry_over = 0;
+
     // Distribute to each investor in this page
     for (idx, locked_amount) in individual_locked.iter().enumerate() {
         let i = start_idx + idx * 2;
@@ -257,7 +290,7 @@ pub fn handle_crank_distribution<'info>(
         );
 
         if final_payout > 0 {
-            // Check daily cap
+            // Check daily cap using CURRENT progress (updated incrementally)
             let allowed_payout = check_daily_cap(
                 progress.current_day_distributed,
                 final_payout,
@@ -291,18 +324,85 @@ pub fn handle_crank_distribution<'info>(
                     ctx.accounts.quote_mint.decimals
                 )?;
 
-                page_distributed += allowed_payout;
+                // CRITICAL FIX: Update progress.current_day_distributed immediately after each transfer
+                // This ensures the daily cap check sees the cumulative amount for subsequent investors
+                progress.current_day_distributed =
+                    progress.current_day_distributed.saturating_add(allowed_payout);
+                page_distributed = page_distributed.saturating_add(allowed_payout);
             }
 
-            page_dust += final_payout.saturating_sub(allowed_payout);
+            // Accumulate dust from cap-limited payouts
+            page_dust = page_dust.saturating_add(final_payout.saturating_sub(allowed_payout));
         } else {
-            page_dust += dust;
+            page_dust = page_dust.saturating_add(dust);
         }
     }
 
-    // Update progress
-    progress.current_day_distributed += page_distributed;
-    progress.current_day_carry_over += page_dust;
+    // Do NOT override with total_investor_fee; we must respect daily cap.
+    // page_distributed already reflects the sum of actual transfers this page.
+    // progress.current_day_distributed has already been updated incrementally in the loop above
+
+    // Distribute accumulated dust if it exceeded threshold
+    if carry_over_distributed > 0 {
+        // Distribute proportionally to investors on this page
+        let page_locked: u64 = individual_locked.iter().sum();
+
+        for (idx, locked_amount) in individual_locked.iter().enumerate() {
+            if page_locked == 0 {
+                break;
+            }
+
+            let investor_dust_share = (carry_over_distributed as u128)
+                .saturating_mul(*locked_amount as u128)
+                .saturating_div(page_locked as u128) as u64;
+
+            if investor_dust_share > 0 {
+                let i = start_idx + idx * 2;
+                let investor_ata = &ctx.remaining_accounts[i + 1];
+
+                // Transfer dust share to investor
+                let vault_key = ctx.accounts.vault.key();
+                let bump_slice = [ctx.accounts.position_owner.bump];
+                let signer_seeds = [
+                    VAULT_SEED,
+                    vault_key.as_ref(),
+                    INVESTOR_FEE_POS_OWNER_SEED,
+                    &bump_slice,
+                ];
+                let signer_seeds_ref = &[&signer_seeds[..]];
+
+                transfer_checked(
+                    CpiContext::new_with_signer(
+                        ctx.accounts.token_program.to_account_info(),
+                        TransferChecked {
+                            from: ctx.accounts.treasury_ata.to_account_info(),
+                            mint: ctx.accounts.quote_mint.to_account_info(),
+                            to: investor_ata.to_account_info(),
+                            authority: ctx.accounts.position_owner.to_account_info(),
+                        },
+                        signer_seeds_ref
+                    ),
+                    investor_dust_share,
+                    ctx.accounts.quote_mint.decimals
+                )?;
+
+                progress.current_day_distributed =
+                    progress.current_day_distributed.saturating_add(investor_dust_share);
+                page_distributed = page_distributed.saturating_add(investor_dust_share);
+            }
+        }
+
+        // Subtract distributed dust from carry_over pool
+        // Any remainder (due to rounding) stays in carry_over for next page
+        let remaining_carry_over = carry_over_from_previous_pages.saturating_sub(carry_over_distributed);
+        page_dust = page_dust.saturating_add(remaining_carry_over);
+    } else {
+        // Carry over didn't meet threshold, add it to new dust
+        page_dust = page_dust.saturating_add(carry_over_from_previous_pages);
+    }
+
+    // Update carry_over with accumulated dust from this page
+    progress.current_day_carry_over = page_dust;
     progress.pagination_cursor = page_start + page_size;
     progress.total_investor_distributed += page_distributed;
 

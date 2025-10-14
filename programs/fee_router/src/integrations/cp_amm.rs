@@ -111,6 +111,32 @@ pub fn claim_position_fees_quote_only<'info>(
         account.amount
     };
 
+    // Log position state before claiming
+    msg!("=== DEBUG: Before claiming fees ===");
+    msg!("Pool collect_fee_mode: {}", pool.collect_fee_mode);
+    msg!("Pool token_a_mint: {}", pool.token_a_mint);
+    msg!("Pool token_b_mint: {}", pool.token_b_mint);
+    msg!("Quote mint: {}", quote_mint.key());
+    msg!("Base mint: {}", base_mint.key());
+    msg!("Position unlocked_liquidity: {}", position.unlocked_liquidity);
+    msg!("Position vested_liquidity: {}", position.vested_liquidity);
+    msg!("Position permanent_locked_liquidity: {}", position.permanent_locked_liquidity);
+    msg!("Position fee_a_pending: {}", position.fee_a_pending);
+    msg!("Position fee_b_pending: {}", position.fee_b_pending);
+    // Log first 8 bytes of checkpoints as u64 for readability
+    let fee_a_checkpoint_sample = u64::from_le_bytes(position.fee_a_per_token_checkpoint[0..8].try_into().unwrap_or([0;8]));
+    let fee_b_checkpoint_sample = u64::from_le_bytes(position.fee_b_per_token_checkpoint[0..8].try_into().unwrap_or([0;8]));
+    msg!("Position fee_a_checkpoint (first 8 bytes): {}", fee_a_checkpoint_sample);
+    msg!("Position fee_b_checkpoint (first 8 bytes): {}", fee_b_checkpoint_sample);
+    // Log first 8 bytes of pool fee accumulators
+    let pool_fee_a_sample = u64::from_le_bytes(pool.fee_a_per_liquidity[0..8].try_into().unwrap_or([0;8]));
+    let pool_fee_b_sample = u64::from_le_bytes(pool.fee_b_per_liquidity[0..8].try_into().unwrap_or([0;8]));
+    msg!("Pool fee_a_per_liquidity (first 8 bytes): {}", pool_fee_a_sample);
+    msg!("Pool fee_b_per_liquidity (first 8 bytes): {}", pool_fee_b_sample);
+    msg!("Pool liquidity: {}", pool.liquidity);
+    msg!("Treasury quote balance before: {}", treasury_before);
+    msg!("Treasury base balance before: {}", base_treasury_before);
+
     // Claim position fees through CP-AMM CPI
     msg!("Claiming position fees from CP-AMM");
 
@@ -211,6 +237,11 @@ pub fn claim_position_fees_quote_only<'info>(
     let quote_claimed = treasury_after
         .checked_sub(treasury_before)
         .ok_or(HonouraryError::MathOverflow)?;
+
+    msg!("=== DEBUG: After claiming fees ===");
+    msg!("Treasury quote balance after: {}", treasury_after);
+    msg!("Treasury base balance after: {}", base_treasury_after);
+    msg!("Quote tokens claimed: {}", quote_claimed);
 
     Ok(quote_claimed)
 }
