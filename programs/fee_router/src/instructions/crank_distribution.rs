@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[derive(Accounts)]
-#[instruction(page_start: u32, page_size: u32, total_locked_all_investors: u64, is_final_page: bool)]
+#[instruction(page_start: u32, page_size: u32, total_locked_all_investors: u64)]
 pub struct CrankDistribution<'info> {
     /// Anyone can call the crank (permissionless)
     pub cranker: Signer<'info>,
@@ -135,8 +135,7 @@ pub fn handle_crank_distribution<'info>(
     ctx: Context<'_, '_, '_, 'info, CrankDistribution<'info>>,
     page_start: u32,
     page_size: u32,
-    total_locked_all_investors: u64,
-    is_final_page: bool
+    total_locked_all_investors: u64
 ) -> Result<()> {
     // Note: Compute budget must be set by the client via ComputeBudgetProgram.setComputeUnitLimit()
     // We need ~400K units for Streamflow SDK calculations with floating-point operations
@@ -218,11 +217,24 @@ pub fn handle_crank_distribution<'info>(
         progress.current_day_total_claimed
     };
 
+    // Calculate is_final_page automatically based on remaining accounts
+    // Each investor has 2 accounts (stream + ATA), so investors_in_page = remaining_accounts.len() / 2
+    let investors_in_page = ctx.remaining_accounts.len() / 2;
+
+    // This is the final page if:
+    // 1. We have fewer investors than page_size (partial page), OR
+    // 2. This page would end at or beyond total_investors count
+    let expected_end = page_start.checked_add(investors_in_page as u32)
+        .ok_or(HonouraryError::InvalidPagination)?;
+
+    let is_final_page = (investors_in_page < page_size as usize)
+        || (expected_end >= policy.total_investors);
+
     // Parse investor data from remaining accounts (inline to avoid lifetime issues)
     // Per bounty spec line 28: pagination means we only receive accounts for THIS page
-    // remaining_accounts contains exactly page_size * 2 accounts (stream + ATA per investor)
+    // remaining_accounts contains at most page_size * 2 accounts (stream + ATA per investor)
     let start_idx = 0; // Always start at beginning of provided page slice
-    let end_idx = (page_size * 2) as usize; // End at page_size worth of investors
+    let end_idx = investors_in_page * 2; // End at actual investors provided
 
     require!(
         ctx.remaining_accounts.len() == end_idx,
@@ -416,7 +428,7 @@ pub fn handle_crank_distribution<'info>(
     progress.total_investor_distributed += page_distributed;
 
     // On final page, close out the day and send remainder to creator
-    // Caller signals final page via is_final_page parameter
+    // Final page is automatically detected from remaining_accounts.len() and policy.total_investors
     if is_final_page {
         // Send remainder to creator
         let remainder = calculate_creator_remainder(

@@ -60,7 +60,12 @@ pub fn handle_setup_policy(
         params.min_payout_lamports >= MIN_PAYOUT_THRESHOLD,
         crate::error::HonouraryError::InvalidPoolConfiguration
     );
-    
+
+    require!(
+        params.total_investors > 0,
+        crate::error::HonouraryError::InvalidPoolConfiguration
+    );
+
     // Initialize policy
     let policy = &mut ctx.accounts.policy;
     policy.vault = ctx.accounts.vault.key();
@@ -69,6 +74,7 @@ pub fn handle_setup_policy(
     policy.daily_cap_lamports = params.daily_cap_lamports;
     policy.min_payout_lamports = params.min_payout_lamports;
     policy.y0_total_allocation = params.y0_total_allocation;
+    policy.total_investors = params.total_investors;
     policy.bump = ctx.bumps.policy;
     policy.created_at = Clock::get()?.unix_timestamp;
     policy.updated_at = Clock::get()?.unix_timestamp;

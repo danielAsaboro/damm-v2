@@ -352,6 +352,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         dailyCapLamports: new BN(1_000_000_000), // 1 SOL worth
         minPayoutLamports: new BN(1000), // 1000 lamports minimum
         y0TotalAllocation: new BN(100_000_000), // 100M tokens
+        totalInvestors: 1, // For this test, we're not testing distribution so 1 is fine
       };
 
       const { policy, progress } = await setupPolicy(context.banksClient, {
@@ -391,6 +392,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         dailyCapLamports: new BN(1_000_000_000),
         minPayoutLamports: new BN(1000),
         y0TotalAllocation: new BN(100_000_000),
+        totalInvestors: 1,
       };
 
       try {
@@ -413,6 +415,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         dailyCapLamports: new BN(1_000_000_000),
         minPayoutLamports: new BN(1000),
         y0TotalAllocation: new BN(0), // INVALID - must be > 0
+        totalInvestors: 1,
       };
 
       try {
@@ -569,6 +572,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         dailyCapLamports: new BN(10_000_000_000), // 10 SOL cap (very high)
         minPayoutLamports: new BN(1000), // 1000 lamports minimum (MIN_PAYOUT_THRESHOLD)
         y0TotalAllocation: new BN(5_000_000), // 5M tokens total allocation
+        totalInvestors: 5, // This test creates 5 investors (see line 609)
       };
 
       await setupPolicy(context.banksClient, {
@@ -839,6 +843,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         dailyCapLamports: new BN(10_000_000_000),
         minPayoutLamports: new BN(1000), // Must be >= MIN_PAYOUT_THRESHOLD (1000)
         y0TotalAllocation: new BN(15_000_000), // 15M tokens
+        totalInvestors: 4, // This test creates 4 investors (see line 869)
       };
 
       await setupPolicy(context.banksClient, {
@@ -1194,6 +1199,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         dailyCapLamports: new BN(10_000_000_000),
         minPayoutLamports: new BN(1000),
         y0TotalAllocation: new BN(5_000_000),
+        totalInvestors: 5, // scenario.lockedPercentages.length (line 1225)
       };
 
       await setupPolicy(context.banksClient, {
@@ -1859,6 +1865,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         dailyCapLamports: new BN(10_000_000_000),
         minPayoutLamports: new BN(5000), // High threshold - will cause dust
         y0TotalAllocation: new BN(5_000_000),
+        totalInvestors: 4, // This test creates 4 investors (see line 1876)
       };
 
       await setupPolicy(context.banksClient, {
@@ -1959,6 +1966,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         dailyCapLamports: new BN(dailyCap), // But we still need to pass BN through the interface
         minPayoutLamports: new BN(1000),
         y0TotalAllocation: new BN(5_000_000),
+        totalInvestors: 5, // This test creates 5 investors (see line 1975)
       };
 
       await setupPolicy(context.banksClient, {
@@ -2056,6 +2064,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         dailyCapLamports: new BN(10_000_000_000),
         minPayoutLamports: new BN(2000), // Moderate threshold
         y0TotalAllocation: new BN(10_000_000),
+        totalInvestors: 5, // This test creates 5 investors (see line 2072)
       };
 
       await setupPolicy(context.banksClient, {
@@ -2291,6 +2300,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         dailyCapLamports: new BN(10_000_000_000),
         minPayoutLamports: new BN(1000),
         y0TotalAllocation: new BN(5_000_000),
+        totalInvestors: 3, // This test creates 3 investors (see line 2322)
       };
 
       await setupPolicy(context.banksClient, {
@@ -3022,6 +3032,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
         dailyCapLamports: new BN(10_000_000_000),
         minPayoutLamports: new BN(1000),
         y0TotalAllocation: new BN(9_000_000),
+        totalInvestors: 5, // This test creates 5 investors (see line 3053)
       };
 
       await setupPolicy(context.banksClient, {

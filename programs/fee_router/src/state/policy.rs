@@ -7,6 +7,7 @@ pub struct PolicyParams {
     pub daily_cap_lamports: Option<u64>,
     pub min_payout_lamports: u64,
     pub y0_total_allocation: u64, // Total tokens minted at TGE
+    pub total_investors: u32, // Total number of investors for pagination validation
 }
 
 #[account]
@@ -30,13 +31,16 @@ pub struct Policy {
     
     /// Total investor allocation minted at TGE (Y0)
     pub y0_total_allocation: u64,
-    
+
+    /// Total number of investors (for pagination validation)
+    pub total_investors: u32,
+
     /// PDA bump seed
     pub bump: u8,
-    
+
     /// Policy creation timestamp
     pub created_at: i64,
-    
+
     /// Policy last updated timestamp
     pub updated_at: i64,
 }

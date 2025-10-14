@@ -137,6 +137,7 @@ export interface PolicyParams {
   dailyCapLamports: BN;
   minPayoutLamports: BN;
   y0TotalAllocation: BN;
+  totalInvestors: number;
 }
 
 /**
@@ -276,6 +277,7 @@ export async function setupPolicy(
       dailyCapLamports: policyParams.dailyCapLamports,
       minPayoutLamports: policyParams.minPayoutLamports,
       y0TotalAllocation: policyParams.y0TotalAllocation,
+      totalInvestors: policyParams.totalInvestors,
     })
     .accountsPartial({
       authority: authority.publicKey,
@@ -541,10 +543,8 @@ export async function crankDistribution(
   const endInvestorIdx = Math.min(pageStart + pageSize, investorAccounts.length);
   const pageInvestorAccounts = investorAccounts.slice(startInvestorIdx, endInvestorIdx);
 
-  // Determine if this is the final page
-  const isFinalPage = endInvestorIdx >= investorAccounts.length;
-
   // Build remaining accounts for THIS PAGE only
+  // NOTE: is_final_page is now calculated on-chain by the program
   const remainingAccounts = pageInvestorAccounts.flatMap((inv) => [
     {
       pubkey: inv.streamAccount,
@@ -565,7 +565,7 @@ export async function crankDistribution(
   });
 
   const transaction = await program.methods
-    .crankDistribution(pageStart, pageSize, totalLockedAllInvestors, isFinalPage)
+    .crankDistribution(pageStart, pageSize, totalLockedAllInvestors)
     .accountsPartial({
       cranker: cranker.publicKey,
       vault,
