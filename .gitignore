@@ -10,3 +10,4 @@ proptest-regressions
 commands
 resources/
 current_progress/
+chats/

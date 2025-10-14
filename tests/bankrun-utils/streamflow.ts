@@ -1,55 +1,9 @@
-import { PublicKey, SystemProgram, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { PublicKey, SystemProgram, Keypair, LAMPORTS_PER_SOL, Transaction, TransactionInstruction } from "@solana/web3.js";
 import { BanksClient } from "solana-bankrun";
 import BN from "bn.js";
 import { processTransactionMaybeThrow } from "./common";
 import { getOrCreateAssociatedTokenAccount } from "./token";
-
-/**
- * Mock Streamflow stream structure for testing
- * Based on streamflow-sdk's StreamflowContract structure
- */
-export interface MockStreamflowStream {
-  /** Magic number to identify stream accounts */
-  magic: BN;
-  /** Version of the stream */
-  version: BN;
-  /** Timestamp when stream was created */
-  createdAt: BN;
-  /** Timestamp when tokens are fully withdrawn */
-  withdrawnAt: BN;
-  /** Timestamp when stream can start */
-  startTime: BN;
-  /** Timestamp when stream ends */
-  endTime: BN;
-  /** Total amount deposited */
-  depositedAmount: BN;
-  /** Amount already withdrawn */
-  withdrawnAmount: BN;
-  /** Sender/creator of the stream */
-  sender: PublicKey;
-  /** Recipient of the stream */
-  recipient: PublicKey;
-  /** Token mint */
-  mint: PublicKey;
-  /** Escrow token account */
-  escrowTokens: PublicKey;
-  /** Partner account (optional) */
-  partner: PublicKey;
-  /** Whether stream can be cancelled */
-  canCancel: boolean;
-  /** Whether stream can be transferred */
-  canTransfer: boolean;
-  /** Cliff period in seconds */
-  cliffAmount: BN;
-  /** Release rate per period */
-  amountPerPeriod: BN;
-  /** Period in seconds */
-  period: BN;
-  /** Whether stream has been cancelled */
-  cancelled: boolean;
-  /** Withdrawal frequency */
-  withdrawalFrequency: BN;
-}
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
 /**
  * Streamflow program ID (mainnet)
@@ -57,6 +11,14 @@ export interface MockStreamflowStream {
 export const STREAMFLOW_PROGRAM_ID = new PublicKey(
   "strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m"
 );
+
+/**
+ * Streamflow constants from SDK
+ */
+export const STREAMFLOW_TREASURY = new PublicKey("5SEpbdjFK5FxwTvfsGMXVQTD2v4M2c5tyRTxhdsPkgDw");
+export const STREAMFLOW_WITHDRAWOR = new PublicKey("wdrwhnCv4pzW8beKsbPa4S2UDZrXenjg16KJdKSpb5u");
+export const STREAMFLOW_FEE_ORACLE = new PublicKey("B743wFVk2pCYhV91cn287e1xY7f1vt4gdY48hhNiuQmT");
+export const METADATA_LEN = 1104;
 
 /**
  * Create a mock Streamflow stream account for testing
