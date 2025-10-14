@@ -383,6 +383,12 @@ export async function addHonoraryLiquidity(
   const quoteTokenProgram = quoteMintAccount?.owner || TOKEN_PROGRAM_ID;
   const baseTokenProgram = baseMintAccount?.owner || TOKEN_PROGRAM_ID;
 
+  // Derive event authority PDA
+  const [eventAuthority] = PublicKey.findProgramAddressSync(
+    [Buffer.from("__event_authority")],
+    CP_AMM_PROGRAM_ID
+  );
+
   const transaction = await program.methods
     .addHonoraryLiquidity(liquidityDelta, tokenAMaxAmount, tokenBMaxAmount)
     .accountsPartial({
@@ -403,6 +409,7 @@ export async function addHonoraryLiquidity(
       cpAmmProgram: CP_AMM_PROGRAM_ID,
       quoteTokenProgram,
       baseTokenProgram,
+      eventAuthority,
     })
     .transaction();
 

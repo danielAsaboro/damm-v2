@@ -269,8 +269,15 @@ function serializeStreamflowStream(stream: MockStreamflowStream): Buffer {
   buffers.push(Buffer.from([0]));
 
   // ix_padding (Vec<u8>) - borsh encodes as u32 length + data
-  // Empty vec: just 4 bytes of zeros
-  buffers.push(Buffer.from([0, 0, 0, 0]));
+  // Padding to make total struct size = 1104 bytes (METADATA_LEN)
+  // Current size before padding: 578 bytes
+  // Need: 1104 - 578 = 526 bytes of padding
+  // But Vec encodes as: u32 length + data, so we need 522 bytes data + 4 bytes length = 526
+  const paddingSize = 522;
+  const paddingLengthBuffer = Buffer.alloc(4);
+  paddingLengthBuffer.writeUInt32LE(paddingSize, 0);
+  buffers.push(paddingLengthBuffer);
+  buffers.push(Buffer.alloc(paddingSize)); // 522 bytes of zeros
 
   // closed (1 byte - bool)
   buffers.push(Buffer.from([stream.cancelled ? 1 : 0]));

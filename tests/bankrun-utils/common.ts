@@ -36,6 +36,10 @@ export async function startTest(root: Keypair) {
         name: "alpha_vault",
         programId: new PublicKey(ALPHA_VAULT_PROGRAM_ID),
       },
+      {
+        name: "streamflow",
+        programId: STREAMFLOW_PROGRAM_ID,
+      },
     ],
     [
       {

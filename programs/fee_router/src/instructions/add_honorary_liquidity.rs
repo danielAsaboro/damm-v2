@@ -94,6 +94,10 @@ pub struct AddHonoraryLiquidity<'info> {
     pub cp_amm_program: Program<'info, crate::cp_amm_types::CpAmm>,
     pub quote_token_program: Interface<'info, TokenInterface>,
     pub base_token_program: Interface<'info, TokenInterface>,
+
+    /// Event authority PDA for CP-AMM
+    /// CHECK: PDA derived with seeds ["__event_authority"]
+    pub event_authority: UncheckedAccount<'info>,
 }
 
 pub fn handle_add_honorary_liquidity(
@@ -201,7 +205,9 @@ pub fn handle_add_honorary_liquidity(
                 AccountMeta::new_readonly(ctx.accounts.position_nft_account.key(), false),
                 AccountMeta::new_readonly(ctx.accounts.position_owner.key(), true), // PDA signs (owns NFT & treasury)
                 AccountMeta::new_readonly(token_a_program.key(), false),
-                AccountMeta::new_readonly(token_b_program.key(), false)
+                AccountMeta::new_readonly(token_b_program.key(), false),
+                AccountMeta::new_readonly(ctx.accounts.event_authority.key(), false), // CP-AMM event authority
+                AccountMeta::new_readonly(ctx.accounts.cp_amm_program.key(), false), // CP-AMM program
             ],
             data: instruction_data,
         }),
@@ -218,6 +224,8 @@ pub fn handle_add_honorary_liquidity(
             ctx.accounts.position_owner.to_account_info(),
             token_a_program.to_account_info(),
             token_b_program.to_account_info(),
+            ctx.accounts.event_authority.to_account_info(), // CP-AMM event authority
+            ctx.accounts.cp_amm_program.to_account_info(), // CP-AMM program
         ],
         signer_seeds_ref
     )?;

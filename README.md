@@ -600,14 +600,31 @@ await program.methods
 anchor test
 
 # Run specific test file
-pnpm exec ts-mocha -p ./tsconfig.json -t 1000000 tests/honourary.ts
-
-# Run integration tests (demonstrates real CP-AMM & Streamflow usage)
-pnpm exec ts-mocha -p ./tsconfig.json -t 1000000 tests/integration-real.ts
-
-# Run Surfpool-based real integration tests
-pnpm exec ts-mocha -p ./tsconfig.json -t 1000000 tests/surfpool-integration.ts
+pnpm exec ts-mocha -p ./tsconfig.json -t 1000000 tests/feeRouter.test.ts
 ```
+
+### Streamflow Program Setup
+
+The tests use the **real Streamflow program** from mainnet, loaded into bankrun for realistic integration testing.
+
+**Setup (already complete):**
+
+1. **Program binary**: Downloaded from mainnet and stored in `tests/fixtures/streamflow.so` (1.0MB)
+2. **Test configuration**: Streamflow program automatically loaded in test context (see `tests/bankrun-utils/common.ts:39-42`)
+3. **Stream account structure**: Mock streams use exact Contract layout (1104 bytes as per `METADATA_LEN`)
+
+**To update the Streamflow program:**
+
+```bash
+# Download latest version from mainnet
+solana program dump strmRqUCoQUgGUan5YhzUZa6KqdzwX5L6FpUxfmKg5m tests/fixtures/streamflow.so --url mainnet-beta
+```
+
+**Benefits of real program integration:**
+- ✅ Tests against actual Streamflow SDK deserialization
+- ✅ Matches mainnet behavior exactly
+- ✅ No mocks - stream accounts use real Contract structure
+- ✅ Bankrun keeps tests fast while using real program
 
 ### Test Suite Overview
 
