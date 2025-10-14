@@ -7,7 +7,7 @@ use crate::cp_amm_types::Pool;
 use crate::{
     constants::*,
     state::{InvestorFeePositionOwner},
-    utils::{validation::validate_quote_only_pool, pda::position_owner_signer_seeds},
+    utils::{validation::preflight_position_validation, pda::position_owner_signer_seeds},
     integrations::cp_amm::create_honorary_position,
     events::HonoraryPositionInitialized,
 };
@@ -111,9 +111,10 @@ pub fn handle_initialize_honorary_position(
     ctx: Context<InitializeHonoraryPosition>,
 ) -> Result<()> {
     let pool = &ctx.accounts.pool;
-    
-    // Critical validation: ensure pool only collects fees in quote token
-    validate_quote_only_pool(&pool, &ctx.accounts.quote_mint.key())?;
+
+    // Critical preflight validation: ensure pool only collects fees in quote token
+    // This provides a deterministic validation step before creating the position
+    preflight_position_validation(&pool, &ctx.accounts.quote_mint.key())?;
     
     // Initialize position owner PDA
     let position_owner = &mut ctx.accounts.position_owner_pda;

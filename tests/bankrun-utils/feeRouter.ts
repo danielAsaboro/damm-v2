@@ -11,6 +11,7 @@ import {
   TOKEN_2022_PROGRAM_ID,
 } from "@solana/spl-token";
 import {
+  AddressLookupTableAccount,
   clusterApiUrl,
   ComputeBudgetProgram,
   Connection,
@@ -444,11 +445,12 @@ export interface CrankDistributionParams {
   creatorQuoteATA: PublicKey;
   pageStart: number;
   pageSize: number;
-  totalLockedAllInvestors: BN;
   investorAccounts: Array<{
     streamAccount: PublicKey;
     investorATA: PublicKey;
   }>;
+  /** Optional Address Lookup Table for compressing transaction size with large investor counts */
+  addressLookupTable?: AddressLookupTableAccount;
 }
 
 /**
@@ -467,8 +469,8 @@ export async function crankDistribution(
     creatorQuoteATA,
     pageStart,
     pageSize,
-    totalLockedAllInvestors,
     investorAccounts,
+    addressLookupTable,
   } = params;
 
   const program = createFeeRouterProgram();
@@ -537,15 +539,11 @@ export async function crankDistribution(
     CP_AMM_PROGRAM_ID
   );
 
-  // Extract only the accounts for this page (per bounty spec line 28: pagination)
-  // Each page should only include page_size investors, not all investors
-  const startInvestorIdx = pageStart;
-  const endInvestorIdx = Math.min(pageStart + pageSize, investorAccounts.length);
-  const pageInvestorAccounts = investorAccounts.slice(startInvestorIdx, endInvestorIdx);
-
-  // Build remaining accounts for THIS PAGE only
-  // NOTE: is_final_page is now calculated on-chain by the program
-  const remainingAccounts = pageInvestorAccounts.flatMap((inv) => [
+  // Build remaining accounts from provided investor accounts
+  // NOTE: The caller is responsible for passing the correct set of accounts:
+  // - First page: ALL investors (for on-chain total calculation)
+  // - Subsequent pages: only current page's investors
+  const remainingAccounts = investorAccounts.flatMap((inv) => [
     {
       pubkey: inv.streamAccount,
       isSigner: false,
@@ -560,12 +558,13 @@ export async function crankDistribution(
 
   // Add compute budget instruction for Streamflow SDK calculations
   // The SDK uses floating-point operations that exceed the default 200K limit
+  // ALT-enabled transactions with many investors need higher limit (max is 1.4M)
   const computeBudgetIx = ComputeBudgetProgram.setComputeUnitLimit({
-    units: 400_000,
+    units: addressLookupTable ? 1_400_000 : 400_000,
   });
 
   const transaction = await program.methods
-    .crankDistribution(pageStart, pageSize, totalLockedAllInvestors)
+    .crankDistribution(pageStart, pageSize)
     .accountsPartial({
       cranker: cranker.publicKey,
       vault,
@@ -593,10 +592,28 @@ export async function crankDistribution(
     .preInstructions([computeBudgetIx])
     .transaction();
 
-  transaction.recentBlockhash = (await banksClient.getLatestBlockhash())[0];
-  transaction.sign(cranker);
+  const latestBlockhash = (await banksClient.getLatestBlockhash())[0];
+  transaction.recentBlockhash = latestBlockhash;
+  transaction.feePayer = cranker.publicKey;
 
-  await processTransactionMaybeThrow(banksClient, transaction);
+  // If Address Lookup Table provided, convert to VersionedTransaction
+  if (addressLookupTable) {
+    // Convert legacy transaction to versioned transaction with ALT support
+    const messageV0 = new TransactionMessage({
+      payerKey: cranker.publicKey,
+      recentBlockhash: latestBlockhash,
+      instructions: transaction.instructions,
+    }).compileToV0Message([addressLookupTable]);
+
+    const versionedTransaction = new VersionedTransaction(messageV0);
+    versionedTransaction.sign([cranker]);
+
+    await processTransactionMaybeThrow(banksClient, versionedTransaction);
+  } else {
+    // Use legacy transaction without ALT
+    transaction.sign(cranker);
+    await processTransactionMaybeThrow(banksClient, transaction);
+  }
 }
 
 /**

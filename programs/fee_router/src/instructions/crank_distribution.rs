@@ -16,7 +16,7 @@ use crate::{
 };
 
 #[derive(Accounts)]
-#[instruction(page_start: u32, page_size: u32, total_locked_all_investors: u64)]
+#[instruction(page_start: u32, page_size: u32)]
 pub struct CrankDistribution<'info> {
     /// Anyone can call the crank (permissionless)
     pub cranker: Signer<'info>,
@@ -129,13 +129,17 @@ pub struct CrankDistribution<'info> {
 
     // Remaining accounts: [stream_account, investor_ata] pairs for this page
     // The number of remaining accounts should be page_size * 2
+    //
+    // SCALABILITY: For deployments with >5 investors, use Address Lookup Tables (ALTs)
+    // to compress transaction size. ALTs enable 100+ investors per transaction.
+    // Without ALTs: limited to ~5 investors per transaction (1232 byte limit)
+    // With ALTs: supports 100+ investors (account addresses compressed to 1-byte indices)
 }
 
 pub fn handle_crank_distribution<'info>(
     ctx: Context<'_, '_, '_, 'info, CrankDistribution<'info>>,
     page_start: u32,
-    page_size: u32,
-    total_locked_all_investors: u64
+    page_size: u32
 ) -> Result<()> {
     // Note: Compute budget must be set by the client via ComputeBudgetProgram.setComputeUnitLimit()
     // We need ~400K units for Streamflow SDK calculations with floating-point operations
@@ -144,11 +148,19 @@ pub fn handle_crank_distribution<'info>(
     let policy = &ctx.accounts.policy;
     let current_time = Clock::get()?.unix_timestamp;
 
+    msg!("=== CRANK START === page_start={}, page_size={}, remaining_accounts={}",
+        page_start, page_size, ctx.remaining_accounts.len());
+    msg!("Progress state: day_completed={}, cursor={}, last_ts={}, current_time={}",
+        progress.day_completed, progress.pagination_cursor, progress.last_distribution_ts, current_time);
+
     // Validate pagination parameters
     require!(page_size > 0 && page_size <= MAX_PAGE_SIZE, HonouraryError::InvalidPagination);
 
     // Check if we can distribute (24-hour window or continuing same day)
-    require!(progress.can_distribute(current_time), HonouraryError::CrankWindowNotReached);
+    let can_dist = progress.can_distribute(current_time);
+    msg!("can_distribute={}, condition: day_completed={}, time_check={}",
+        can_dist, progress.day_completed, current_time >= progress.last_distribution_ts + 86400);
+    require!(can_dist, HonouraryError::CrankWindowNotReached);
 
     // Enforce idempotent behavior: if page already processed, return early (no-op)
     // This allows safe retries without double-payment
@@ -161,13 +173,34 @@ pub fn handle_crank_distribution<'info>(
 
     let is_first_page = page_start == 0 || progress.day_completed;
 
-    // If first page of new day, claim fees and store TOTAL locked across ALL investors
-    // NOTE: total_locked_all_investors must be calculated off-chain by the caller
-    // by summing locked amounts from ALL investor Streamflow accounts, not just the current page.
-    // This is critical for pro-rata distribution to work correctly across multiple pages.
-    let claimed_quote = if is_first_page && progress.day_completed {
+    // Save the day_completed state BEFORE we modify it
+    // We need this to determine if we're starting a new day (and thus need to process only page_size investors)
+    let is_starting_new_day = is_first_page && progress.day_completed;
+
+    // If first page of new day, claim fees and calculate TOTAL locked across ALL investors
+    // IMPORTANT: On first page, remaining_accounts MUST contain ALL investor stream accounts
+    // (not just the first page), so we can calculate the total on-chain.
+    // Subsequent pages only need their page's accounts.
+    let claimed_quote = if is_starting_new_day {
+        // Calculate total_locked_all_investors ON-CHAIN by reading ALL investor streams
         // Note: total_locked_all_investors can be 0 if all tokens are fully unlocked
         // In this case, all fees go to creator (handled by calculation logic)
+        let mut total_locked_all_investors = 0u64;
+
+        // Iterate through ALL investor stream accounts to calculate total
+        for i in (0..ctx.remaining_accounts.len()).step_by(2) {
+            let stream_account = &ctx.remaining_accounts[i];
+
+            // Read locked amount from this stream
+            let locked = crate::integrations::streamflow::read_locked_amount_from_stream(
+                stream_account,
+                current_time
+            )?;
+
+            total_locked_all_investors = total_locked_all_investors
+                .checked_add(locked)
+                .ok_or(HonouraryError::MathOverflow)?;
+        }
 
         // Claim fees from honorary position
         let vault_key = ctx.accounts.vault.key();
@@ -217,33 +250,38 @@ pub fn handle_crank_distribution<'info>(
         progress.current_day_total_claimed
     };
 
-    // Calculate is_final_page automatically based on remaining accounts
-    // Each investor has 2 accounts (stream + ATA), so investors_in_page = remaining_accounts.len() / 2
-    let investors_in_page = ctx.remaining_accounts.len() / 2;
+    // On first page, remaining_accounts contains ALL investors for total calculation
+    // On subsequent pages, it contains only current page's investors
+    let total_investors_in_accounts = ctx.remaining_accounts.len() / 2;
 
-    // This is the final page if:
-    // 1. We have fewer investors than page_size (partial page), OR
-    // 2. This page would end at or beyond total_investors count
-    let expected_end = page_start.checked_add(investors_in_page as u32)
+    // Determine how many investors to actually distribute to on THIS page
+    // On first page of new day: min(page_size, total_investors)
+    // On subsequent pages: all provided investors (which should be <= page_size)
+    let investors_to_process = if is_starting_new_day {
+        // First page of new day: only process first page_size investors
+        std::cmp::min(page_size as usize, total_investors_in_accounts)
+    } else {
+        // Subsequent pages or continuing same day: process all provided investors
+        total_investors_in_accounts
+    };
+
+    // Calculate is_final_page based on actual progress
+    let expected_end = page_start.checked_add(investors_to_process as u32)
         .ok_or(HonouraryError::InvalidPagination)?;
 
-    let is_final_page = (investors_in_page < page_size as usize)
+    let is_final_page = (investors_to_process < page_size as usize)
         || (expected_end >= policy.total_investors);
 
-    // Parse investor data from remaining accounts (inline to avoid lifetime issues)
-    // Per bounty spec line 28: pagination means we only receive accounts for THIS page
-    // remaining_accounts contains at most page_size * 2 accounts (stream + ATA per investor)
-    let start_idx = 0; // Always start at beginning of provided page slice
-    let end_idx = investors_in_page * 2; // End at actual investors provided
+    msg!("DEBUG: page_start={}, page_size={}, investors_to_process={}, expected_end={}, policy.total_investors={}, is_final_page={}, day_completed={}",
+        page_start, page_size, investors_to_process, expected_end, policy.total_investors, is_final_page, progress.day_completed);
 
-    require!(
-        ctx.remaining_accounts.len() == end_idx,
-        HonouraryError::InvalidPagination
-    );
+    // Parse investor data from remaining accounts (inline to avoid lifetime issues)
+    let start_idx = 0; // Always start at beginning of provided page slice
+    let end_idx = investors_to_process * 2; // End at investors we're actually distributing to
 
     let mut individual_locked = Vec::new();
 
-    // Process each investor in this page to get their individual locked amounts
+    // Process each investor we're distributing to on THIS page
     for i in (start_idx..end_idx).step_by(2) {
         let stream_account = &ctx.remaining_accounts[i];
         let _investor_ata = &ctx.remaining_accounts[i + 1];
@@ -257,7 +295,7 @@ pub fn handle_crank_distribution<'info>(
         individual_locked.push(locked);
     }
 
-    // CRITICAL FIX: Use total locked across ALL investors (stored in progress), not just this page
+    // Use total locked across ALL investors (stored in progress), not just this page
     // This ensures consistent pro-rata calculation across all pages
     let total_locked_all_investors = progress.current_day_total_locked_all;
 

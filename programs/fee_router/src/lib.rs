@@ -39,14 +39,12 @@ pub mod fee_router {
     pub fn crank_distribution<'info>(
         ctx: Context<'_, '_, '_, 'info, CrankDistribution<'info>>,
         page_start: u32,
-        page_size: u32,
-        total_locked_all_investors: u64
+        page_size: u32
     ) -> Result<()> {
         instructions::handle_crank_distribution(
             ctx,
             page_start,
-            page_size,
-            total_locked_all_investors
+            page_size
         )
     }
 

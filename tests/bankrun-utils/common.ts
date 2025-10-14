@@ -4,6 +4,7 @@ import {
   PublicKey,
   SystemProgram,
   Transaction,
+  VersionedTransaction,
 } from "@solana/web3.js";
 import { BanksClient, ProgramTestContext, startAnchor } from "solana-bankrun";
 import { ALPHA_VAULT_PROGRAM_ID, CP_AMM_PROGRAM_ID } from "./constants";
@@ -78,7 +79,7 @@ export async function transferSol(
 
 export async function processTransactionMaybeThrow(
   banksClient: BanksClient,
-  transaction: Transaction
+  transaction: Transaction | VersionedTransaction
 ) {
   const transactionMeta = await banksClient.tryProcessTransaction(transaction);
   if (transactionMeta.result && transactionMeta.result.length > 0) {

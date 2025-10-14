@@ -37,4 +37,7 @@ pub enum HonouraryError {
 
     #[msg("Page already processed - cannot replay pages during active distribution")]
     PageAlreadyProcessed = 6011,
+
+    #[msg("Invalid total_locked_all_investors - does not match actual locked amounts")]
+    InvalidTotalLockedAmount = 6012,
 }
