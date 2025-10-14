@@ -599,7 +599,7 @@ describe("Fee Router - Comprehensive Test Suite", () => {
       const { streams, lockedAmounts, investorATAs } =
         await createMockInvestorStreams(context.banksClient, payer, context, {
           investorCount,
-          sender: creator.publicKey,
+          sender: creator,
           mint: quoteMint,
           totalAllocation: new BN(5_000_000), // Y0 = 5M
           vestingStartTime: vestingStart,
